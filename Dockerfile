@@ -1,5 +1,5 @@
 # ใช้ base image ที่มี Python
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 # ตั้ง working directory
 WORKDIR /app
