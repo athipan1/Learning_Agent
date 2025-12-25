@@ -1,144 +1,77 @@
 
 from typing import List, Dict
-from .models import Trade
-import pandas as pd
-import pandas_ta as ta
+from .models import Trade, PricePoint
 
-def analyze_market_regime(price_history: List[Dict]) -> str:
+def analyze_agent_accuracy(trade_history: List[Trade]) -> Dict[str, float]:
     """
-    Analyzes the market regime using ADX and ATR.
-    """
-    if len(price_history) < 20:
-        return "ranging"
+    Analyzes the accuracy of each agent using a risk-aware formula.
 
-    df = pd.DataFrame(price_history)
-    df.set_index('timestamp', inplace=True)
-
-    adx = df.ta.adx()
-    atr = df.ta.atr()
-
-    last_adx = adx.iloc[-1]['ADX_14']
-    last_atr_pct = (atr.iloc[-1] / df.iloc[-1]['close'])
-
-    if last_atr_pct > 0.05:
-        return "volatile"
-    if last_adx > 25:
-        return "trending"
-
-    return "ranging"
-
-def analyze_agent_accuracy(trade_history: List[Trade], lookback_window: int = 50) -> Dict[str, float]:
-    """
-    Analyzes the accuracy of each agent over a given lookback window.
-
-    An agent's signal is considered "correct" if it aligns with a profitable
-    trade action or advises against an unprofitable one. For example, a 'buy'
-    signal is correct if the trade's PnL is positive. A 'sell' signal is
-    also correct if the trade's PnL is positive (as it was a profitable short).
-    - Hold signals are ignored.
+    An agent's decision is "correct" if:
+    - It voted with the final verdict on a profitable trade.
+    - It voted against the final verdict on a losing trade.
     """
     agent_correct_counts = {}
-    agent_signal_counts = {}
+    agent_total_votes = {}
 
-    # Consider only the most recent trades
-    recent_trades = trade_history[-lookback_window:]
-
-    for trade in recent_trades:
+    for trade in trade_history:
         is_profitable = trade.pnl_pct > 0
         for agent_name, vote in trade.agent_votes.items():
-            if agent_name not in agent_signal_counts:
-                agent_signal_counts[agent_name] = 0
+            if agent_name not in agent_total_votes:
+                agent_total_votes[agent_name] = 0
                 agent_correct_counts[agent_name] = 0
 
-            # We only measure accuracy on 'buy' or 'sell' signals
-            if vote.action in ["buy", "sell"]:
-                agent_signal_counts[agent_name] += 1
-                # A signal is correct if it matches a profitable trade's action,
-                # or is the opposite of an unprofitable trade's action.
-                signal_matches_action = (vote.action == trade.action)
-                if (is_profitable and signal_matches_action) or \
-                   (not is_profitable and not signal_matches_action):
+            if vote.action != "hold":
+                agent_total_votes[agent_name] += 1
+                vote_matched_verdict = (vote.action == trade.final_verdict)
+
+                if (is_profitable and vote_matched_verdict) or \
+                   (not is_profitable and not vote_matched_verdict):
                     agent_correct_counts[agent_name] += 1
 
     agent_accuracies = {}
-    for agent_name, total_signals in agent_signal_counts.items():
-        if total_signals > 0:
-            accuracy = agent_correct_counts[agent_name] / total_signals
+    for agent_name, total_votes in agent_total_votes.items():
+        if total_votes > 0:
+            accuracy = agent_correct_counts[agent_name] / total_votes
             agent_accuracies[agent_name] = accuracy
 
     return agent_accuracies
 
-def detect_trend_bias(trade_history: List[Trade], lookback_window: int = 50) -> float:
+def calculate_performance_metrics(trade_history: List[Trade]) -> Dict:
     """
-    Detects if the system is overly biased towards trend-following.
-    This can be inferred by analyzing the performance of consecutive trades
-    in the same direction.
+    Calculates overall system performance metrics.
     """
-    recent_trades = trade_history[-lookback_window:]
+    if not trade_history:
+        return {
+            "win_rate": 0.0,
+            "average_pnl_pct": 0.0,
+            "max_drawdown": 0.0,
+            "equity_curve": []
+        }
 
-    if len(recent_trades) < 3: # Need at least 3 trades to detect a trend
-        return 0.0
+    win_count = 0
+    total_pnl_pct = 0
+    equity = 100000
+    peak_equity = equity
+    max_drawdown = 0
+    equity_curve = [equity]
 
-    long_trades = [t for t in recent_trades if t.action == 'buy']
-    short_trades = [t for t in recent_trades if t.action == 'sell']
+    for trade in trade_history:
+        if trade.pnl_pct > 0:
+            win_count += 1
+        total_pnl_pct += trade.pnl_pct
+        equity *= (1 + trade.pnl_pct)
+        equity_curve.append(equity)
 
-    if not long_trades or not short_trades:
-        return 0.0 # Not enough data for comparison
+        if equity > peak_equity:
+            peak_equity = equity
 
-    long_win_rate = sum(1 for t in long_trades if t.pnl_pct > 0) / len(long_trades)
-    short_win_rate = sum(1 for t in short_trades if t.pnl_pct > 0) / len(short_trades)
+        drawdown = (peak_equity - equity) / peak_equity
+        if drawdown > max_drawdown:
+            max_drawdown = drawdown
 
-    # A significant difference in win rates suggests a bias
-    # The return value represents the magnitude of the bias
-    return long_win_rate - short_win_rate
-
-def detect_overtrading(trade_history: List[Trade], lookback_window: int = 50, trade_frequency_threshold: int = 10, win_rate_threshold: float = 0.4) -> bool:
-    """
-    Detects overtrading by checking for a high frequency of trades with a low
-    win rate over a given lookback window.
-    """
-    recent_trades = trade_history[-lookback_window:]
-
-    if len(recent_trades) < trade_frequency_threshold:
-        return False
-
-    win_count = sum(1 for trade in recent_trades if trade.pnl_pct > 0)
-    current_win_rate = win_count / len(recent_trades)
-
-    return current_win_rate < win_rate_threshold
-
-def detect_drawdown_clustering(trade_history: List[Trade], lookback_window: int = 15, heavy_loss_threshold: float = -0.02, cluster_threshold: int = 3) -> bool:
-    """
-    Detects the clustering of significant losses in a recent, short window.
-    """
-    recent_trades = trade_history[-lookback_window:]
-    heavy_losses = [
-        trade for trade in recent_trades if trade.pnl_pct < heavy_loss_threshold
-    ]
-
-    return len(heavy_losses) >= cluster_threshold
-
-def detect_confirmation_bias(agent_accuracies: Dict[str, float], agent_weights: Dict[str, float]) -> Dict[str, bool]:
-    """
-    Detects confirmation bias where a highly-weighted agent has low accuracy.
-    """
-    # A simple approach: flag agents with high weight but low accuracy
-    # More sophisticated logic could be added later (e.g., comparing to median accuracy)
-
-    bias_detected = {}
-    # Find the median accuracy to establish a baseline
-    if not agent_accuracies:
-        return {}
-
-    median_accuracy = sorted(agent_accuracies.values())[len(agent_accuracies) // 2]
-
-    for agent_name, weight in agent_weights.items():
-        accuracy = agent_accuracies.get(agent_name)
-
-        # Flag if weight is high but accuracy is below median
-        if accuracy is not None and weight > 0.4 and accuracy < median_accuracy:
-            bias_detected[agent_name] = True
-        else:
-            bias_detected[agent_name] = False
-
-    return bias_detected
+    return {
+        "win_rate": win_count / len(trade_history),
+        "average_pnl_pct": total_pnl_pct / len(trade_history),
+        "max_drawdown": max_drawdown,
+        "equity_curve": equity_curve
+    }

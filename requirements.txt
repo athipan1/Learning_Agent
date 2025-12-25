@@ -3,3 +3,4 @@ uvicorn
 pytest
 pandas
 pandas-ta
+pydantic

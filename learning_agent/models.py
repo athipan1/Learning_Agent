@@ -1,6 +1,6 @@
 
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
 # --- Input Contract Models ---
 
@@ -11,52 +11,59 @@ class AgentVote(BaseModel):
 
 class Trade(BaseModel):
     """Represents a single historical trade."""
-    timestamp: str
-    action: str
-    entry_price: float
-    exit_price: float
+    trade_id: str
+    ticker: str
+    final_verdict: str
+    executed: bool
     pnl_pct: float
+    holding_days: int
+    market_regime: str
     agent_votes: Dict[str, AgentVote]
+    timestamp: str
 
-class PortfolioMetrics(BaseModel):
-    """Represents the overall performance metrics of the portfolio."""
-    equity_curve: List[float]
-    max_drawdown: float
-    win_rate: float
-    profit_factor: float
+class PricePoint(BaseModel):
+    """Represents a single price point in history."""
+    timestamp: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: int
 
-class Config(BaseModel):
-    """Represents the current configuration of the trading system."""
-    agent_weights: Dict[str, float]
+class CurrentPolicyRisk(BaseModel):
     risk_per_trade: float
-    stop_loss_pct: float
     max_position_pct: float
-    enable_technical_stop: bool
+    stop_loss_pct: float
+
+class CurrentPolicyStrategyBias(BaseModel):
+    preferred_regime: str
+
+class CurrentPolicy(BaseModel):
+    agent_weights: Dict[str, float]
+    risk: CurrentPolicyRisk
+    strategy_bias: CurrentPolicyStrategyBias
 
 class LearningRequest(BaseModel):
     """The complete input data structure for the /learn endpoint."""
+    learning_mode: str
+    window_size: int
     trade_history: List[Trade]
-    price_history: List[Dict]
-    portfolio_metrics: PortfolioMetrics
-    current_config: Config
+    price_history: Dict[str, List[PricePoint]]
+    current_policy: CurrentPolicy
 
 # --- Output Contract Models ---
 
-class RiskAdjustments(BaseModel):
-    risk_per_trade: Optional[float] = None
-    stop_loss_pct: Optional[float] = None
-    max_position_pct: Optional[float] = None
-    enable_technical_stop: Optional[bool] = None
-
 class PolicyDeltas(BaseModel):
     agent_weights: Dict[str, float] = Field(default_factory=dict)
-    risk: RiskAdjustments = Field(default_factory=RiskAdjustments)
-    strategy_bias: Dict[str, str] = Field(default_factory=dict)
+    risk: Dict[str, float] = Field(default_factory=dict)
+    strategy_bias: Dict[str, Any] = Field(default_factory=dict)
+    guardrails: Dict[str, Any] = Field(default_factory=dict)
 
 
 class LearningResponse(BaseModel):
     """The complete output data structure for the /learn endpoint."""
     learning_state: str
-    confidence: float = 0.0
+    learning_mode: Optional[str] = None
+    confidence_score: float = 0.0
     policy_deltas: PolicyDeltas = Field(default_factory=PolicyDeltas)
     reasoning: List[str] = Field(default_factory=list)

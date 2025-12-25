@@ -1,110 +1,91 @@
 
 import unittest
-from unittest.mock import patch, PropertyMock
-import pandas as pd
-from learning_agent.models import (
-    Trade,
-    PortfolioMetrics,
-    Config,
-    LearningRequest,
-    AgentVote
-)
+from unittest.mock import patch
+from learning_agent.models import LearningRequest, Trade, AgentVote, CurrentPolicy, CurrentPolicyRisk, CurrentPolicyStrategyBias, PricePoint
 from learning_agent.logic import run_learning_cycle
-from learning_agent.analysis import analyze_market_regime, analyze_agent_accuracy
+from learning_agent.analysis import analyze_agent_accuracy, calculate_performance_metrics
 
 class TestAnalysisFunctions(unittest.TestCase):
 
-    @patch('pandas.DataFrame.ta', new_callable=PropertyMock)
-    def test_analyze_market_regime(self, mock_ta):
-        price_history = [{'timestamp': f'2023-01-{i+1:02d}', 'close': 100} for i in range(30)]
-
-        # Test for ranging market
-        mock_ta.return_value.adx.return_value = pd.DataFrame({'ADX_14': [15.0]})
-        mock_ta.return_value.atr.return_value = pd.Series([1.0])
-        self.assertEqual(analyze_market_regime(price_history), "ranging")
-
-        # Test for trending market
-        mock_ta.return_value.adx.return_value = pd.DataFrame({'ADX_14': [30.0]})
-        self.assertEqual(analyze_market_regime(price_history), "trending")
-
-        # Test for volatile market
-        mock_ta.return_value.atr.return_value = pd.Series([6.0])
-        self.assertEqual(analyze_market_regime(price_history), "volatile")
-
-
     def test_analyze_agent_accuracy(self):
         trades = [
-            Trade(timestamp="t1", action="buy", entry_price=100, exit_price=101, pnl_pct=0.01, agent_votes={"good": AgentVote(action="buy", confidence=0.8), "bad": AgentVote(action="sell", confidence=0.8)}),
-            Trade(timestamp="t2", action="sell", entry_price=100, exit_price=99, pnl_pct=0.01, agent_votes={"good": AgentVote(action="sell", confidence=0.8), "bad": AgentVote(action="buy", confidence=0.8)}),
-            Trade(timestamp="t3", action="buy", entry_price=100, exit_price=99, pnl_pct=-0.01, agent_votes={"good": AgentVote(action="sell", confidence=0.8), "bad": AgentVote(action="buy", confidence=0.8)}),
+            Trade(trade_id="1", ticker="AAPL", final_verdict="buy", executed=True, pnl_pct=0.02, holding_days=2, market_regime="trending", agent_votes={"tech": AgentVote(action="buy", confidence=0.8), "fund": AgentVote(action="sell", confidence=0.6)}, timestamp="..."),
+            Trade(trade_id="2", ticker="AAPL", final_verdict="buy", executed=True, pnl_pct=-0.01, holding_days=3, market_regime="ranging", agent_votes={"tech": AgentVote(action="buy", confidence=0.7), "fund": AgentVote(action="sell", confidence=0.5)}, timestamp="..."),
         ]
         accuracies = analyze_agent_accuracy(trades)
-        self.assertEqual(accuracies["good"], 1.0)
-        self.assertEqual(accuracies["bad"], 0.0)
+        self.assertAlmostEqual(accuracies["tech"], 0.5)
+        self.assertAlmostEqual(accuracies["fund"], 0.5)
+
+    def test_calculate_performance_metrics(self):
+        trades = [
+            Trade(trade_id="1", ticker="AAPL", final_verdict="buy", executed=True, pnl_pct=0.02, holding_days=2, market_regime="trending", agent_votes={}, timestamp="..."),
+            Trade(trade_id="2", ticker="AAPL", final_verdict="buy", executed=True, pnl_pct=-0.01, holding_days=3, market_regime="ranging", agent_votes={}, timestamp="..."),
+        ]
+        metrics = calculate_performance_metrics(trades)
+        self.assertAlmostEqual(metrics["win_rate"], 0.5)
+        self.assertAlmostEqual(metrics["average_pnl_pct"], 0.005)
+        self.assertGreater(metrics["max_drawdown"], 0)
 
 class TestLogicFunctions(unittest.TestCase):
 
     def setUp(self):
-        self.price_history = [{'timestamp': f'2023-01-{i+1:02d}', 'open': 100, 'high': 102, 'low': 98, 'close': 101, 'volume': 1000} for i in range(30)]
-        trade_history = [
-            Trade(timestamp="t1", action="buy", entry_price=100, exit_price=102, pnl_pct=0.02, agent_votes={"good": AgentVote(action="buy", confidence=0.8), "bad": AgentVote(action="sell", confidence=0.8)})
-        ] * 30
+        # Data that makes 'tech' agent clearly better than 'fund'
+        tech_votes_win = AgentVote(action="buy", confidence=0.8)
+        tech_votes_loss_correct = AgentVote(action="sell", confidence=0.8)
+        tech_votes_loss_incorrect = AgentVote(action="buy", confidence=0.8)
+        fund_votes = AgentVote(action="sell", confidence=0.6)
 
-        self.base_request = LearningRequest(
-            trade_history=trade_history,
-            price_history=self.price_history,
-            portfolio_metrics=PortfolioMetrics(equity_curve=[100, 102, 101], max_drawdown=0.05, win_rate=0.7, profit_factor=1.5),
-            current_config=Config(agent_weights={"good": 0.5, "bad": 0.5}, risk_per_trade=0.01, stop_loss_pct=0.02, max_position_pct=0.1, enable_technical_stop=True)
-        )
+        self.trades = []
+        for i in range(100):
+            is_win = i % 2 == 0
+            pnl = 0.02 if is_win else -0.01
 
-    @patch('learning_agent.logic.analysis.analyze_market_regime')
-    def test_agent_weight_adjustment(self, mock_analyze_market_regime):
-        mock_analyze_market_regime.return_value = "ranging"
-        response = run_learning_cycle(self.base_request)
-        deltas = response.policy_deltas.agent_weights
-        self.assertIn("good", deltas)
-        self.assertIn("bad", deltas)
-        self.assertGreater(deltas["good"], 0)
-        self.assertLess(deltas["bad"], 0)
+            tech_vote = tech_votes_win if is_win else tech_votes_loss_correct if i % 4 == 1 else tech_votes_loss_incorrect
 
-    @patch('learning_agent.logic.analysis.analyze_market_regime')
-    def test_risk_increase(self, mock_analyze_market_regime):
-        mock_analyze_market_regime.return_value = "ranging"
-        response = run_learning_cycle(self.base_request)
-        self.assertIsNotNone(response.policy_deltas.risk.risk_per_trade)
-        self.assertGreater(response.policy_deltas.risk.risk_per_trade, 0)
+            self.trades.append(
+                Trade(trade_id=str(i), ticker="AAPL", final_verdict="buy", executed=True, pnl_pct=pnl, holding_days=2, market_regime="trending", agent_votes={"tech": tech_vote, "fund": fund_votes}, timestamp="...")
+            )
 
-    @patch('learning_agent.logic.analysis.analyze_market_regime')
-    def test_risk_decrease_on_drawdown(self, mock_analyze_market_regime):
-        mock_analyze_market_regime.return_value = "ranging"
-        request = self.base_request.model_copy(deep=True)
-        request.portfolio_metrics.max_drawdown = 0.20
+        self.price_history = {"AAPL": [PricePoint(timestamp="...", open=100, high=101, low=99, close=100, volume=1000)] * 20}
+        self.current_policy = CurrentPolicy(agent_weights={"tech": 0.5, "fund": 0.5}, risk=CurrentPolicyRisk(risk_per_trade=0.01, max_position_pct=0.1, stop_loss_pct=0.05), strategy_bias=CurrentPolicyStrategyBias(preferred_regime="neutral"))
+        self.request = LearningRequest(learning_mode="macro", window_size=100, trade_history=self.trades, price_history=self.price_history, current_policy=self.current_policy)
+
+    def test_no_warmup_in_logic(self):
+        request = self.request.model_copy(deep=True)
+        request.trade_history = request.trade_history[:50]
         response = run_learning_cycle(request)
-        self.assertIsNotNone(response.policy_deltas.risk.risk_per_trade)
-        self.assertLess(response.policy_deltas.risk.risk_per_trade, 0)
+        self.assertEqual(response.learning_state, "active")
 
-    @patch('learning_agent.logic.analysis.analyze_market_regime')
-    def test_confidence_score(self, mock_analyze_market_regime):
-        mock_analyze_market_regime.return_value = "ranging"
-        response = run_learning_cycle(self.base_request)
-        self.assertGreaterEqual(response.confidence, 0.0)
-        self.assertLessEqual(response.confidence, 1.0)
+    def test_agent_weight_adjustment(self):
+        response = run_learning_cycle(self.request)
+        deltas = response.policy_deltas.agent_weights
+        self.assertIn("tech", deltas)
+        self.assertIn("fund", deltas)
+        self.assertGreater(deltas["tech"], 0)
+        self.assertLess(deltas["fund"], 0)
+        self.assertAlmostEqual(sum(deltas.values()), 0.0)
 
-    def test_calculate_confidence_score_calculation(self):
-        trade_history = [
-            Trade(timestamp="t1", action="buy", entry_price=100, exit_price=102, pnl_pct=0.02, agent_votes={})
-        ] * 50
-        portfolio_metrics = PortfolioMetrics(equity_curve=[], max_drawdown=0.15, win_rate=0.7, profit_factor=1.5)
+    def test_risk_adjustment_on_drawdown(self):
+        trades = (
+            [Trade(trade_id=str(i), ticker="AAPL", final_verdict="buy", executed=True, pnl_pct=-0.08, holding_days=2, market_regime="volatile", agent_votes={}, timestamp="...") for i in range(5)] +
+            [Trade(trade_id=str(i), ticker="AAPL", final_verdict="buy", executed=True, pnl_pct=0.01, holding_days=2, market_regime="trending", agent_votes={}, timestamp="...") for i in range(5, 100)]
+        )
+        request = self.request.model_copy(deep=True)
+        request.trade_history = trades
+        response = run_learning_cycle(request)
+        self.assertIn("risk_per_trade", response.policy_deltas.risk)
+        self.assertLess(response.policy_deltas.risk["risk_per_trade"], 0)
 
-        # Expected calculation:
-        # trade_count_factor = 50 / 100 = 0.5
-        # performance_consistency = 1 - stdev([0.02]*50) = 1.0
-        # drawdown_penalty = 0.9
-        # confidence = 0.5 * 1.0 * 0.9 = 0.45
-        from learning_agent.logic import calculate_confidence_score
-        confidence = calculate_confidence_score(trade_history, portfolio_metrics)
-        self.assertAlmostEqual(confidence, 0.45, places=2)
-
+    def test_guardrail_recommendation(self):
+        trades = (
+            [Trade(trade_id=str(i), ticker="AAPL", final_verdict="buy", executed=True, pnl_pct=-0.1, holding_days=2, market_regime="volatile", agent_votes={}, timestamp="...") for i in range(5)] +
+            [Trade(trade_id=str(i), ticker="AAPL", final_verdict="buy", executed=True, pnl_pct=0.01, holding_days=2, market_regime="trending", agent_votes={}, timestamp="...") for i in range(5, 100)]
+        )
+        request = self.request.model_copy(deep=True)
+        request.trade_history = trades
+        response = run_learning_cycle(request)
+        self.assertIn("max_total_drawdown_pct", response.policy_deltas.guardrails)
+        self.assertEqual(response.policy_deltas.guardrails["max_total_drawdown_pct"], 0.20)
 
 if __name__ == '__main__':
     unittest.main()
