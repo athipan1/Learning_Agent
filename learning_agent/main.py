@@ -20,7 +20,7 @@ async def learn(request: LearningRequest) -> LearningResponse:
     if trade_count < 20:
         return LearningResponse(
             learning_state="warmup",
-            reasoning=["Awaiting more data: at least 20 trades are required for active learning."]
+            reasoning=["Insufficient trade samples to evaluate policy effectiveness."]
         )
 
     # Run the full learning cycle

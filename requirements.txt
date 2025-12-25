@@ -1,3 +1,5 @@
 fastapi
 uvicorn
 pytest
+pandas
+pandas-ta

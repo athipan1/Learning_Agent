@@ -1,6 +1,31 @@
 
 from typing import List, Dict
 from .models import Trade
+import pandas as pd
+import pandas_ta as ta
+
+def analyze_market_regime(price_history: List[Dict]) -> str:
+    """
+    Analyzes the market regime using ADX and ATR.
+    """
+    if len(price_history) < 20:
+        return "ranging"
+
+    df = pd.DataFrame(price_history)
+    df.set_index('timestamp', inplace=True)
+
+    adx = df.ta.adx()
+    atr = df.ta.atr()
+
+    last_adx = adx.iloc[-1]['ADX_14']
+    last_atr_pct = (atr.iloc[-1] / df.iloc[-1]['close'])
+
+    if last_atr_pct > 0.05:
+        return "volatile"
+    if last_adx > 25:
+        return "trending"
+
+    return "ranging"
 
 def analyze_agent_accuracy(trade_history: List[Trade], lookback_window: int = 50) -> Dict[str, float]:
     """
@@ -20,17 +45,17 @@ def analyze_agent_accuracy(trade_history: List[Trade], lookback_window: int = 50
 
     for trade in recent_trades:
         is_profitable = trade.pnl_pct > 0
-        for agent_name, signal in trade.agents.items():
+        for agent_name, vote in trade.agent_votes.items():
             if agent_name not in agent_signal_counts:
                 agent_signal_counts[agent_name] = 0
                 agent_correct_counts[agent_name] = 0
 
             # We only measure accuracy on 'buy' or 'sell' signals
-            if signal in ["buy", "sell"]:
+            if vote.action in ["buy", "sell"]:
                 agent_signal_counts[agent_name] += 1
                 # A signal is correct if it matches a profitable trade's action,
                 # or is the opposite of an unprofitable trade's action.
-                signal_matches_action = (signal == trade.action)
+                signal_matches_action = (vote.action == trade.action)
                 if (is_profitable and signal_matches_action) or \
                    (not is_profitable and not signal_matches_action):
                     agent_correct_counts[agent_name] += 1
