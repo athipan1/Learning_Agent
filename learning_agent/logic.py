@@ -1,93 +1,134 @@
 
-from .models import LearningRequest, LearningResponse
-from . import analysis
-from typing import List
-import statistics
+from .models import LearningRequest, LearningResponse, PolicyDeltas, Trade
+from typing import List, Dict
+import numpy as np
+from collections import defaultdict
 
-# --- Constants for adjustments ---
-MAX_WEIGHT_ADJUSTMENT = 0.10
-MAX_RISK_PER_TRADE_ADJUSTMENT = 0.005
-MAX_POSITION_PCT_ADJUSTMENT = 0.10
+# --- Constants for Asset-Aware Learning ---
+ASSET_MIN_TRADES_WARMUP = 10
+MAX_DRAWDOWN_THRESHOLD = 0.08
+CONSECUTIVE_LOSS_THRESHOLD = 3
+RECENT_TRADES_WINDOW = 10
+RISK_PER_TRADE_ADJUSTMENT = -0.005
 
-def calculate_confidence_score(
-    performance_metrics: dict,
-    trade_history: list
-) -> float:
+# --- Constants for Hybrid Scoring ---
+PERFORMANCE_UPPER_THRESHOLD = 0.70
+PERFORMANCE_LOWER_THRESHOLD = 0.45
+BIAS_ADJUSTMENT_INCREMENT = 0.05
+
+WEIGHT_WIN_RATE = 0.50
+WEIGHT_MAX_DRAWDOWN = 0.35
+WEIGHT_VOLATILITY = 0.15
+MAX_ACCEPTABLE_DRAWDOWN = 0.20
+MAX_ACCEPTABLE_VOLATILITY = 0.10
+
+def _calculate_asset_performance(trades: List[Trade]) -> Dict:
     """
-    Calculates the confidence score based on performance metrics.
+    Calculates performance metrics for a single asset.
     """
-    win_rate = performance_metrics["win_rate"]
-    max_drawdown = performance_metrics["max_drawdown"]
+    pnl_pcts = [t.pnl_pct for t in trades]
 
-    # Factor 1: Win Rate Score
-    win_rate_score = win_rate / 0.7  # Target a 70% win rate for a score of 1.0
+    # Win Rate
+    win_rate = len([p for p in pnl_pcts if p > 0]) / len(pnl_pcts) if pnl_pcts else 0
 
-    # Factor 2: Drawdown Penalty
-    drawdown_penalty = 1.0 - (max_drawdown / 0.5)  # Penalize linearly up to 50% drawdown
-
-    # Factor 3: Consistency (variance of returns)
-    pnl_pcts = [trade.pnl_pct for trade in trade_history]
-    if len(pnl_pcts) > 1:
-        consistency = 1 - statistics.stdev(pnl_pcts)
+    # Max Drawdown
+    if not pnl_pcts:
+        max_drawdown = 0
     else:
-        consistency = 1.0
+        equity_curve = np.cumprod([1 + p for p in pnl_pcts])
+        peak = np.maximum.accumulate(equity_curve)
+        drawdown = (equity_curve - peak) / peak
+        max_drawdown = abs(np.min(drawdown)) if drawdown.size > 0 else 0
 
-    # Combine factors
-    confidence = (win_rate_score * 0.4) + (drawdown_penalty * 0.4) + (consistency * 0.2)
+    # Volatility of Returns
+    volatility = np.std(pnl_pcts) if len(pnl_pcts) > 1 else 0
 
-    return max(0.0, min(1.0, confidence))
+    return {
+        "win_rate": win_rate,
+        "max_drawdown": max_drawdown,
+        "volatility": volatility,
+        "trade_count": len(trades)
+    }
 
 def run_learning_cycle(request: LearningRequest) -> LearningResponse:
     """
-    Runs the full learning and recommendation cycle.
+    Asset-aware learning cycle. Analyzes trade history grouped by asset
+    and recommends policy adjustments.
     """
-    response = LearningResponse(learning_state="active", learning_mode="macro")
+    response = LearningResponse(learning_state="active", policy_deltas=PolicyDeltas())
     reasoning = []
 
-    # 1. Analyze Performance
-    performance_metrics = analysis.calculate_performance_metrics(request.trade_history)
-    agent_accuracies = analysis.analyze_agent_accuracy(request.trade_history)
+    trades_by_asset = defaultdict(list)
+    for trade in request.trade_history:
+        trades_by_asset[trade.asset_id].append(trade)
 
-    # 2. Calculate Confidence Score
-    confidence = calculate_confidence_score(performance_metrics, request.trade_history)
-    response.confidence_score = confidence
-
-    # If confidence is too low, recommend no changes
-    if confidence < 0.6:
-        response.reasoning.append("Confidence score is below threshold (0.6). Recommending no policy changes to ensure stability.")
+    if not trades_by_asset:
+        response.learning_state = "insufficient_data"
+        response.reasoning.append("No trades provided in the history.")
         return response
 
-    # 3. Agent Weight Adjustments (Zero-Sum)
-    if len(agent_accuracies) > 1:
-        best_agent = max(agent_accuracies, key=agent_accuracies.get)
-        worst_agent = min(agent_accuracies, key=agent_accuracies.get)
+    global_risk_adjustment_needed = False
+    assets_in_warmup = 0
 
-        if best_agent != worst_agent:
-            response.policy_deltas.agent_weights[best_agent] = MAX_WEIGHT_ADJUSTMENT
-            response.policy_deltas.agent_weights[worst_agent] = -MAX_WEIGHT_ADJUSTMENT
-            reasoning.append(f"Reallocating weight from underperforming agent '{worst_agent}' to outperforming agent '{best_agent}'.")
+    for asset_id, trades in trades_by_asset.items():
+        if len(trades) < ASSET_MIN_TRADES_WARMUP:
+            assets_in_warmup += 1
+            reasoning.append(f"Asset '{asset_id}' is in warmup ({len(trades)}/{ASSET_MIN_TRADES_WARMUP} trades). No bias will be applied.")
+            continue
 
-    # 4. Risk Adjustments
-    if performance_metrics["max_drawdown"] > 0.20:
-        response.policy_deltas.risk["risk_per_trade"] = -MAX_RISK_PER_TRADE_ADJUSTMENT
-        reasoning.append(f"Max drawdown of {performance_metrics['max_drawdown']:.2%} exceeds threshold (20%). Reducing risk per trade.")
+        # --- Performance and Scoring ---
+        perf = _calculate_asset_performance(trades)
 
-    # 5. Guardrail Recommendations
-    if performance_metrics["max_drawdown"] > 0.25:
-        response.policy_deltas.guardrails["max_total_drawdown_pct"] = 0.20
-        reasoning.append("High drawdown detected. Recommending a max total drawdown guardrail of 20%.")
+        # Normalize metrics to scores (higher is better)
+        wr_score = perf["win_rate"]
+        mdd_score = 1.0 - min(1.0, perf["max_drawdown"] / MAX_ACCEPTABLE_DRAWDOWN)
+        vol_score = 1.0 - min(1.0, perf["volatility"] / MAX_ACCEPTABLE_VOLATILITY)
 
-    # Analyze regime performance
-    regime_performance = {}
-    for trade in request.trade_history:
-        if trade.market_regime not in regime_performance:
-            regime_performance[trade.market_regime] = []
-        regime_performance[trade.market_regime].append(trade.pnl_pct)
+        performance_score = (WEIGHT_WIN_RATE * wr_score) + \
+                            (WEIGHT_MAX_DRAWDOWN * mdd_score) + \
+                            (WEIGHT_VOLATILITY * vol_score)
 
-    for regime, pnl_list in regime_performance.items():
-        if sum(pnl_list) / len(pnl_list) < 0: # Negative expectancy
-            response.policy_deltas.strategy_bias["avoid_regime"] = [regime]
-            reasoning.append(f"Negative expectancy detected in {regime} markets. Recommending to avoid this regime.")
+        bias_delta = 0.0
+        if performance_score > PERFORMANCE_UPPER_THRESHOLD:
+            bias_delta = BIAS_ADJUSTMENT_INCREMENT
+            reasoning.append(f"Asset '{asset_id}' performance score ({performance_score:.2f}) is above {PERFORMANCE_UPPER_THRESHOLD}. Applying positive bias.")
+        elif performance_score < PERFORMANCE_LOWER_THRESHOLD:
+            bias_delta = -BIAS_ADJUSTMENT_INCREMENT
+            reasoning.append(f"Asset '{asset_id}' performance score ({performance_score:.2f}) is below {PERFORMANCE_LOWER_THRESHOLD}. Applying negative bias.")
+
+        if bias_delta != 0.0:
+            response.policy_deltas.asset_biases[asset_id] = bias_delta
+
+        # --- Drawdown Clustering Detection ---
+        recent_trades = sorted(trades, key=lambda t: t.timestamp, reverse=True)[:RECENT_TRADES_WINDOW]
+        recent_pnl = [t.pnl_pct for t in recent_trades]
+
+        # Check for consecutive losses
+        consecutive_losses = 0
+        for pnl in recent_pnl:
+            if pnl < 0:
+                consecutive_losses += 1
+                if consecutive_losses >= CONSECUTIVE_LOSS_THRESHOLD:
+                    global_risk_adjustment_needed = True
+                    reasoning.append(f"Asset '{asset_id}' has {consecutive_losses} consecutive losses. Flagging for risk review.")
+                    break
+            else:
+                consecutive_losses = 0
+
+        # Check for high recent drawdown
+        recent_perf = _calculate_asset_performance(recent_trades)
+        if recent_perf["max_drawdown"] > MAX_DRAWDOWN_THRESHOLD:
+            global_risk_adjustment_needed = True
+            reasoning.append(f"Asset '{asset_id}' has a high recent drawdown of {recent_perf['max_drawdown']:.2%}. Flagging for risk review.")
+
+    if global_risk_adjustment_needed:
+        response.policy_deltas.risk["risk_per_trade"] = RISK_PER_TRADE_ADJUSTMENT
+        reasoning.append(f"Applying a global risk reduction of {RISK_PER_TRADE_ADJUSTMENT} due to drawdown clustering.")
+
+    if assets_in_warmup == len(trades_by_asset):
+        response.learning_state = "warmup"
+    else:
+        response.learning_state = "success"
 
     response.reasoning = reasoning
     return response

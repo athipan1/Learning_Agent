@@ -12,7 +12,7 @@ class AgentVote(BaseModel):
 class Trade(BaseModel):
     """Represents a single historical trade."""
     trade_id: str
-    ticker: str
+    asset_id: str
     final_verdict: str
     executed: bool
     pnl_pct: float
@@ -58,6 +58,7 @@ class PolicyDeltas(BaseModel):
     risk: Dict[str, float] = Field(default_factory=dict)
     strategy_bias: Dict[str, Any] = Field(default_factory=dict)
     guardrails: Dict[str, Any] = Field(default_factory=dict)
+    asset_biases: Dict[str, float] = Field(default_factory=dict)
 
 
 class LearningResponse(BaseModel):

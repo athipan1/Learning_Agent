@@ -16,14 +16,6 @@ async def learn(request: LearningRequest) -> LearningResponse:
     Analyzes trade history and portfolio metrics to generate incremental
     policy adjustments.
     """
-    # 1. Validate Learning Readiness
-    if len(request.trade_history) < request.window_size:
-        return LearningResponse(
-            learning_state="warmup",
-            reasoning=[f"Requires at least {request.window_size} trades for analysis, but received {len(request.trade_history)}."]
-        )
-
-    # 2. Run the full learning cycle
     return run_learning_cycle(request)
 
 @app.post("/market-regime", response_model=MarketRegimeOutput)
