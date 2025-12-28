@@ -4,3 +4,4 @@ pydantic
 pandas
 pandas-ta
 numpy
+pytest
