@@ -1,1 +1,6 @@
-# Optimizer_Agent
+Learning_Agent (พัฒนาเองได้)
+
+หน้าที่
+	•	เก็บผลลัพธ์ย้อนหลัง
+	•	ดูว่าการตัดสินใจไหนเวิร์ก/พัง
+	•	ปรับ logic / prompt / weight
