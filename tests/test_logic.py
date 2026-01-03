@@ -8,31 +8,31 @@ class TestAssetAwareLearning(unittest.TestCase):
         """Set up mock trade data for tests."""
         self.trades = [
             # Asset A: Consistent performer
-            Trade(asset_id="A", pnl_pct=0.02, timestamp="2023-01-01T00:00:00Z", trade_id="A1", final_verdict="buy", executed=True, holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=0.03, timestamp="2023-01-02T00:00:00Z", trade_id="A2", final_verdict="buy", executed=True, holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=0.01, timestamp="2023-01-03T00:00:00Z", trade_id="A3", final_verdict="buy", executed=True, holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=-0.01, timestamp="2023-01-04T00:00:00Z", trade_id="A4", final_verdict="buy", executed=True, holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=0.02, timestamp="2023-01-05T00:00:00Z", trade_id="A5", final_verdict="buy", executed=True, holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=0.02, timestamp="2023-01-06T00:00:00Z", trade_id="A6", final_verdict="buy", executed=True, holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=0.03, timestamp="2023-01-07T00:00:00Z", trade_id="A7", final_verdict="buy", executed=True, holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=0.01, timestamp="2023-01-08T00:00:00Z", trade_id="A8", final_verdict="buy", executed=True, holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=-0.01, timestamp="2023-01-09T00:00:00Z", trade_id="A9", final_verdict="buy", executed=True, holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=0.02, timestamp="2023-01-10T00:00:00Z", trade_id="A10", final_verdict="buy", executed=True, holding_days=1, market_regime="trending", agent_votes={}),
+            Trade(asset_id="A", pnl_pct=0.02, timestamp="2023-01-01T00:00:00Z", trade_id="A1", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
+            Trade(asset_id="A", pnl_pct=0.03, timestamp="2023-01-02T00:00:00Z", trade_id="A2", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
+            Trade(asset_id="A", pnl_pct=0.01, timestamp="2023-01-03T00:00:00Z", trade_id="A3", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
+            Trade(asset_id="A", pnl_pct=-0.01, timestamp="2023-01-04T00:00:00Z", trade_id="A4", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
+            Trade(asset_id="A", pnl_pct=0.02, timestamp="2023-01-05T00:00:00Z", trade_id="A5", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
+            Trade(asset_id="A", pnl_pct=0.02, timestamp="2023-01-06T00:00:00Z", trade_id="A6", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
+            Trade(asset_id="A", pnl_pct=0.03, timestamp="2023-01-07T00:00:00Z", trade_id="A7", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
+            Trade(asset_id="A", pnl_pct=0.01, timestamp="2023-01-08T00:00:00Z", trade_id="A8", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
+            Trade(asset_id="A", pnl_pct=-0.01, timestamp="2023-01-09T00:00:00Z", trade_id="A9", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
+            Trade(asset_id="A", pnl_pct=0.02, timestamp="2023-01-10T00:00:00Z", trade_id="A10", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
 
             # Asset B: Underperformer
-            Trade(asset_id="B", pnl_pct=-0.05, timestamp="2023-01-01T00:00:00Z", trade_id="B1", final_verdict="buy", executed=True, holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=-0.02, timestamp="2023-01-02T00:00:00Z", trade_id="B2", final_verdict="buy", executed=True, holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=0.01, timestamp="2023-01-03T00:00:00Z", trade_id="B3", final_verdict="buy", executed=True, holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=-0.04, timestamp="2023-01-04T00:00:00Z", trade_id="B4", final_verdict="buy", executed=True, holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=-0.03, timestamp="2023-01-05T00:00:00Z", trade_id="B5", final_verdict="buy", executed=True, holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=-0.05, timestamp="2023-01-06T00:00:00Z", trade_id="B6", final_verdict="buy", executed=True, holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=-0.02, timestamp="2023-01-07T00:00:00Z", trade_id="B7", final_verdict="buy", executed=True, holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=0.01, timestamp="2023-01-08T00:00:00Z", trade_id="B8", final_verdict="buy", executed=True, holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=-0.04, timestamp="2023-01-09T00:00:00Z", trade_id="B9", final_verdict="buy", executed=True, holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=-0.03, timestamp="2023-01-10T00:00:00Z", trade_id="B10", final_verdict="buy", executed=True, holding_days=1, market_regime="ranging", agent_votes={}),
+            Trade(asset_id="B", pnl_pct=-0.05, timestamp="2023-01-01T00:00:00Z", trade_id="B1", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
+            Trade(asset_id="B", pnl_pct=-0.02, timestamp="2023-01-02T00:00:00Z", trade_id="B2", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
+            Trade(asset_id="B", pnl_pct=0.01, timestamp="2023-01-03T00:00:00Z", trade_id="B3", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
+            Trade(asset_id="B", pnl_pct=-0.04, timestamp="2023-01-04T00:00:00Z", trade_id="B4", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
+            Trade(asset_id="B", pnl_pct=-0.03, timestamp="2023-01-05T00:00:00Z", trade_id="B5", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
+            Trade(asset_id="B", pnl_pct=-0.05, timestamp="2023-01-06T00:00:00Z", trade_id="B6", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
+            Trade(asset_id="B", pnl_pct=-0.02, timestamp="2023-01-07T00:00:00Z", trade_id="B7", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
+            Trade(asset_id="B", pnl_pct=0.01, timestamp="2023-01-08T00:00:00Z", trade_id="B8", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
+            Trade(asset_id="B", pnl_pct=-0.04, timestamp="2023-01-09T00:00:00Z", trade_id="B9", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
+            Trade(asset_id="B", pnl_pct=-0.03, timestamp="2023-01-10T00:00:00Z", trade_id="B10", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
 
             # Asset C: Warmup
-            Trade(asset_id="C", pnl_pct=0.01, timestamp="2023-01-01T00:00:00Z", trade_id="C1", final_verdict="buy", executed=True, holding_days=1, market_regime="trending", agent_votes={}),
+            Trade(asset_id="C", pnl_pct=0.01, timestamp="2023-01-01T00:00:00Z", trade_id="C1", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
         ]
         self.current_policy = CurrentPolicy(
             agent_weights={'agent_a': 0.5, 'agent_b': 0.5},
@@ -71,7 +71,7 @@ class TestAssetAwareLearning(unittest.TestCase):
     def test_drawdown_clustering_consecutive_losses(self):
         """Test risk adjustment from consecutive losses."""
         dd_trades = self.trades + [
-            Trade(asset_id="D", pnl_pct=-0.02, timestamp="2023-01-01T00:00:00Z", trade_id="D1", final_verdict="buy", executed=True, holding_days=1, market_regime="volatile", agent_votes={}) for i in range(10)
+            Trade(asset_id="D", pnl_pct=-0.02, timestamp="2023-01-01T00:00:00Z", trade_id="D1", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="volatile", agent_votes={}) for i in range(10)
         ]
         dd_trades[21].pnl_pct = -0.03
         dd_trades[22].pnl_pct = -0.04
@@ -85,8 +85,8 @@ class TestAssetAwareLearning(unittest.TestCase):
     def test_drawdown_clustering_high_recent_drawdown(self):
         """Test risk adjustment from high recent drawdown."""
         dd_trades = self.trades + [
-            Trade(asset_id="E", pnl_pct=0.1, timestamp="2023-01-01T00:00:00Z", trade_id="E1", final_verdict="buy", executed=True, holding_days=1, market_regime="volatile", agent_votes={}),
-            Trade(asset_id="E", pnl_pct=-0.15, timestamp="2023-01-02T00:00:00Z", trade_id="E2", final_verdict="buy", executed=True, holding_days=1, market_regime="volatile", agent_votes={}),
+            Trade(asset_id="E", pnl_pct=0.1, timestamp="2023-01-01T00:00:00Z", trade_id="E1", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="volatile", agent_votes={}),
+            Trade(asset_id="E", pnl_pct=-0.15, timestamp="2023-01-02T00:00:00Z", trade_id="E2", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="volatile", agent_votes={}),
         ] * 5
 
         request = self.request.model_copy(deep=True)
@@ -101,3 +101,34 @@ class TestAssetAwareLearning(unittest.TestCase):
         request.trade_history = []
         response = run_learning_cycle(request)
         self.assertEqual(response.learning_state, "insufficient_data")
+
+    def test_ignore_non_executed_trades(self):
+        """Test that trades not marked as executed or failed are ignored."""
+
+        mixed_trades = self.trades + [
+            # A profitable trade that "failed" due to system reasons
+            Trade(asset_id="A", pnl_pct=0.10, timestamp="2023-01-11T00:00:00Z", trade_id="A11", final_verdict="buy",
+                  executed=True, execution_status="failed", execution_reason="insufficient_funds",
+                  holding_days=1, market_regime="trending", agent_votes={}),
+
+            # A losing trade that wasn't executed at all
+            Trade(asset_id="B", pnl_pct=-0.10, timestamp="2023-01-11T00:00:00Z", trade_id="B11", final_verdict="sell",
+                  executed=False, execution_status=None,
+                  holding_days=1, market_regime="ranging", agent_votes={}),
+        ]
+
+        request = self.request.model_copy(deep=True)
+        request.trade_history = mixed_trades
+
+        response = run_learning_cycle(request)
+
+        # The logic should still produce the same biases as before, as the new trades should be ignored
+        biases = response.policy_deltas.asset_biases
+        self.assertGreater(biases.get("A", 0), 0)
+        self.assertLess(biases.get("B", 0), 0)
+
+        # The baseline data for Asset B DOES trigger a risk adjustment.
+        # This test now correctly verifies that the non-executed trades do not change that outcome.
+        self.assertIn("risk_per_trade", response.policy_deltas.risk,
+                      "The baseline data should have triggered a risk adjustment.")
+        self.assertEqual(response.policy_deltas.risk["risk_per_trade"], -0.005)
