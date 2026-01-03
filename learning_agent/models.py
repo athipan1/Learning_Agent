@@ -15,6 +15,8 @@ class Trade(BaseModel):
     asset_id: str
     final_verdict: str
     executed: bool
+    execution_status: Optional[str] = None
+    execution_reason: Optional[str] = None
     pnl_pct: float
     holding_days: int
     market_regime: str

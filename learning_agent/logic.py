@@ -35,10 +35,12 @@ def _calculate_asset_performance(trades: List[Trade]) -> Dict:
     if not pnl_pcts:
         max_drawdown = 0
     else:
-        equity_curve = np.cumprod([1 + p for p in pnl_pcts])
+        # Prepend an initial capital of 1.0 for accurate peak/drawdown calculation
+        equity_curve = np.insert(np.cumprod([1 + p for p in pnl_pcts]), 0, 1.0)
         peak = np.maximum.accumulate(equity_curve)
         drawdown = (equity_curve - peak) / peak
-        max_drawdown = abs(np.min(drawdown)) if drawdown.size > 0 else 0
+        # Ignore the initial 0.0 drawdown from the prepended capital
+        max_drawdown = abs(np.min(drawdown[1:])) if len(drawdown) > 1 else 0
 
     # Volatility of Returns
     volatility = np.std(pnl_pcts) if len(pnl_pcts) > 1 else 0
@@ -50,22 +52,30 @@ def _calculate_asset_performance(trades: List[Trade]) -> Dict:
         "trade_count": len(trades)
     }
 
-def run_learning_cycle(request: LearningRequest) -> LearningResponse:
+def run_learning_cycle(request: LearningRequest, correlation_id: str = "not-provided") -> LearningResponse:
     """
     Asset-aware learning cycle. Analyzes trade history grouped by asset
     and recommends policy adjustments.
     """
+    print(f"[correlation_id={correlation_id}] learning cycle started")
     response = LearningResponse(learning_state="active", policy_deltas=PolicyDeltas())
     reasoning = []
 
-    trades_by_asset = defaultdict(list)
-    for trade in request.trade_history:
-        trades_by_asset[trade.asset_id].append(trade)
+    # --- Pre-filter trades to only include successfully executed ones ---
+    executable_trades = [
+        t for t in request.trade_history
+        if t.executed and t.execution_status == 'success'
+    ]
 
-    if not trades_by_asset:
+    if not executable_trades:
         response.learning_state = "insufficient_data"
-        response.reasoning.append("No trades provided in the history.")
+        response.reasoning.append("No successfully executed trades found in the history.")
+        print(f"[correlation_id={correlation_id}] learning cycle ended: no executable trades")
         return response
+
+    trades_by_asset = defaultdict(list)
+    for trade in executable_trades:
+        trades_by_asset[trade.asset_id].append(trade)
 
     global_risk_adjustment_needed = False
     assets_in_warmup = 0
@@ -131,4 +141,5 @@ def run_learning_cycle(request: LearningRequest) -> LearningResponse:
         response.learning_state = "success"
 
     response.reasoning = reasoning
+    print(f"[correlation_id={correlation_id}] policy updated")
     return response
