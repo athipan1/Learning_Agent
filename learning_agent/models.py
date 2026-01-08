@@ -1,6 +1,7 @@
 
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Literal
+from decimal import Decimal
 
 # --- Input Contract Models ---
 
@@ -10,18 +11,15 @@ class AgentVote(BaseModel):
     confidence: float
 
 class Trade(BaseModel):
-    """Represents a single historical trade."""
-    trade_id: str
+    """Represents a single historical trade, as received from the Manager."""
+    trade_id: str # uuid
+    account_id: str # uuid
     asset_id: str
-    final_verdict: str
-    executed: bool
-    execution_status: Optional[str] = None
-    execution_reason: Optional[str] = None
-    pnl_pct: float
-    holding_days: int
-    market_regime: str
-    agent_votes: Dict[str, AgentVote]
-    timestamp: str
+    symbol: str
+    side: Literal["buy", "sell"]
+    quantity: Decimal
+    price: Decimal
+    executed_at: str # ISO-8601 timestamp
 
 class PricePoint(BaseModel):
     """Represents a single price point in history."""
