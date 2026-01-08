@@ -1,6 +1,7 @@
 
-from .models import LearningRequest, LearningResponse, PolicyDeltas, Trade
+from .models import LearningRequest, LearningResponse, PolicyDeltas, Trade, PricePoint
 from typing import List, Dict
+from decimal import Decimal
 import numpy as np
 from collections import defaultdict
 
@@ -22,12 +23,32 @@ WEIGHT_VOLATILITY = 0.15
 MAX_ACCEPTABLE_DRAWDOWN = 0.20
 MAX_ACCEPTABLE_VOLATILITY = 0.10
 
-def _calculate_asset_performance(trades: List[Trade]) -> Dict:
+
+def _calculate_trade_pnl_pct(trade: Trade, price_history: List[PricePoint]) -> float:
+    """
+    Calculates the Profit/Loss percentage for a single trade based on price history.
+    """
+    if not price_history:
+        return 0.0
+
+    entry_price = float(trade.price)
+    # Assume the exit price is the close of the last known data point
+    exit_price = price_history[-1].close
+
+    if trade.side == "buy":
+        pnl_pct = (exit_price - entry_price) / entry_price
+    elif trade.side == "sell":
+        pnl_pct = (entry_price - exit_price) / entry_price
+    else:
+        pnl_pct = 0.0
+
+    return pnl_pct
+
+
+def _calculate_asset_performance(trades: List[Trade], pnl_pcts: List[float]) -> Dict:
     """
     Calculates performance metrics for a single asset.
     """
-    pnl_pcts = [t.pnl_pct for t in trades]
-
     # Win Rate
     win_rate = len([p for p in pnl_pcts if p > 0]) / len(pnl_pcts) if pnl_pcts else 0
 
@@ -61,20 +82,14 @@ def run_learning_cycle(request: LearningRequest, correlation_id: str = "not-prov
     response = LearningResponse(learning_state="active", policy_deltas=PolicyDeltas())
     reasoning = []
 
-    # --- Pre-filter trades to only include successfully executed ones ---
-    executable_trades = [
-        t for t in request.trade_history
-        if t.executed and t.execution_status == 'success'
-    ]
-
-    if not executable_trades:
+    if not request.trade_history:
         response.learning_state = "insufficient_data"
-        response.reasoning.append("No successfully executed trades found in the history.")
-        print(f"[correlation_id={correlation_id}] learning cycle ended: no executable trades")
+        response.reasoning.append("No trades found in the history.")
+        print(f"[correlation_id={correlation_id}] learning cycle ended: no trades provided")
         return response
 
     trades_by_asset = defaultdict(list)
-    for trade in executable_trades:
+    for trade in request.trade_history:
         trades_by_asset[trade.asset_id].append(trade)
 
     global_risk_adjustment_needed = False
@@ -86,8 +101,12 @@ def run_learning_cycle(request: LearningRequest, correlation_id: str = "not-prov
             reasoning.append(f"Asset '{asset_id}' is in warmup ({len(trades)}/{ASSET_MIN_TRADES_WARMUP} trades). No bias will be applied.")
             continue
 
+        # --- P/L Calculation ---
+        asset_price_history = request.price_history.get(asset_id, [])
+        pnl_pcts = [_calculate_trade_pnl_pct(t, asset_price_history) for t in trades]
+
         # --- Performance and Scoring ---
-        perf = _calculate_asset_performance(trades)
+        perf = _calculate_asset_performance(trades, pnl_pcts)
 
         # Normalize metrics to scores (higher is better)
         wr_score = perf["win_rate"]
@@ -110,8 +129,10 @@ def run_learning_cycle(request: LearningRequest, correlation_id: str = "not-prov
             response.policy_deltas.asset_biases[asset_id] = bias_delta
 
         # --- Drawdown Clustering Detection ---
-        recent_trades = sorted(trades, key=lambda t: t.timestamp, reverse=True)[:RECENT_TRADES_WINDOW]
-        recent_pnl = [t.pnl_pct for t in recent_trades]
+        # Sort trades and their P/Ls by execution time to get the most recent ones
+        sorted_trades_and_pnl = sorted(zip(trades, pnl_pcts), key=lambda x: x[0].executed_at, reverse=True)
+        recent_trades = [tp[0] for tp in sorted_trades_and_pnl[:RECENT_TRADES_WINDOW]]
+        recent_pnl = [tp[1] for tp in sorted_trades_and_pnl[:RECENT_TRADES_WINDOW]]
 
         # Check for consecutive losses
         consecutive_losses = 0
@@ -126,7 +147,7 @@ def run_learning_cycle(request: LearningRequest, correlation_id: str = "not-prov
                 consecutive_losses = 0
 
         # Check for high recent drawdown
-        recent_perf = _calculate_asset_performance(recent_trades)
+        recent_perf = _calculate_asset_performance(recent_trades, recent_pnl)
         if recent_perf["max_drawdown"] > MAX_DRAWDOWN_THRESHOLD:
             global_risk_adjustment_needed = True
             reasoning.append(f"Asset '{asset_id}' has a high recent drawdown of {recent_perf['max_drawdown']:.2%}. Flagging for risk review.")

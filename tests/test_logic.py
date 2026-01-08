@@ -1,58 +1,56 @@
 
 import unittest
-from learning_agent.models import LearningRequest, Trade, CurrentPolicy, CurrentPolicyRisk, CurrentPolicyStrategyBias
+from decimal import Decimal
+from learning_agent.models import LearningRequest, Trade, CurrentPolicy, CurrentPolicyRisk, CurrentPolicyStrategyBias, PricePoint
 from learning_agent.logic import run_learning_cycle, _calculate_asset_performance
 
 class TestAssetAwareLearning(unittest.TestCase):
     def setUp(self):
-        """Set up mock trade data for tests."""
+        """Set up mock data using the new Trade model and price history."""
         self.trades = [
-            # Asset A: Consistent performer
-            Trade(asset_id="A", pnl_pct=0.02, timestamp="2023-01-01T00:00:00Z", trade_id="A1", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=0.03, timestamp="2023-01-02T00:00:00Z", trade_id="A2", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=0.01, timestamp="2023-01-03T00:00:00Z", trade_id="A3", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=-0.01, timestamp="2023-01-04T00:00:00Z", trade_id="A4", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=0.02, timestamp="2023-01-05T00:00:00Z", trade_id="A5", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=0.02, timestamp="2023-01-06T00:00:00Z", trade_id="A6", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=0.03, timestamp="2023-01-07T00:00:00Z", trade_id="A7", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=0.01, timestamp="2023-01-08T00:00:00Z", trade_id="A8", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=-0.01, timestamp="2023-01-09T00:00:00Z", trade_id="A9", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
-            Trade(asset_id="A", pnl_pct=0.02, timestamp="2023-01-10T00:00:00Z", trade_id="A10", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
+            # Asset A (profitable): 80% win rate, but with small losses to ensure high score
+            *[Trade(trade_id=f"A{i}", account_id="acc-001", asset_id="A", symbol="A-USD", side="buy", quantity=Decimal("1"), price=Decimal("100"), executed_at=f"2024-01-{10+i:02d}T10:00:00Z") for i in range(8)],
+            *[Trade(trade_id=f"A{i+8}", account_id="acc-001", asset_id="A", symbol="A-USD", side="buy", quantity=Decimal("1"), price=Decimal("111"), executed_at=f"2024-01-{18+i:02d}T10:00:00Z") for i in range(2)], # 2 small losing trades
 
-            # Asset B: Underperformer
-            Trade(asset_id="B", pnl_pct=-0.05, timestamp="2023-01-01T00:00:00Z", trade_id="B1", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=-0.02, timestamp="2023-01-02T00:00:00Z", trade_id="B2", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=0.01, timestamp="2023-01-03T00:00:00Z", trade_id="B3", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=-0.04, timestamp="2023-01-04T00:00:00Z", trade_id="B4", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=-0.03, timestamp="2023-01-05T00:00:00Z", trade_id="B5", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=-0.05, timestamp="2023-01-06T00:00:00Z", trade_id="B6", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=-0.02, timestamp="2023-01-07T00:00:00Z", trade_id="B7", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=0.01, timestamp="2023-01-08T00:00:00Z", trade_id="B8", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=-0.04, timestamp="2023-01-09T00:00:00Z", trade_id="B9", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
-            Trade(asset_id="B", pnl_pct=-0.03, timestamp="2023-01-10T00:00:00Z", trade_id="B10", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="ranging", agent_votes={}),
+            # Asset B (losing): Bought at 200, current price is 180 (-10% P/L)
+            *[Trade(trade_id=f"B{i}", account_id="acc-001", asset_id="B", symbol="B-USD", side="buy", quantity=Decimal("1"), price=Decimal("200"), executed_at=f"2024-01-{10+i:02d}T10:00:00Z") for i in range(8)],
+            *[Trade(trade_id=f"B{i+8}", account_id="acc-001", asset_id="B", symbol="B-USD", side="buy", quantity=Decimal("1"), price=Decimal("170"), executed_at=f"2024-01-{18+i:02d}T10:00:00Z") for i in range(2)], # 2 winning trades
 
-            # Asset C: Warmup
-            Trade(asset_id="C", pnl_pct=0.01, timestamp="2023-01-01T00:00:00Z", trade_id="C1", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="trending", agent_votes={}),
+            # Asset C (warmup)
+            Trade(trade_id="C1", account_id="acc-001", asset_id="C", symbol="C-USD", side="buy", quantity=Decimal("1"), price=Decimal("50"), executed_at="2024-01-10T10:00:00Z"),
         ]
+
+        self.price_history = {
+            "A": [PricePoint(timestamp="2024-01-20T10:00:00Z", open=105, high=112, low=103, close=110, volume=1000)],
+            "B": [PricePoint(timestamp="2024-01-20T10:00:00Z", open=185, high=190, low=178, close=180, volume=1000)],
+            "C": [PricePoint(timestamp="2024-01-20T10:00:00Z", open=50, high=52, low=49, close=51, volume=1000)],
+        }
+
         self.current_policy = CurrentPolicy(
             agent_weights={'agent_a': 0.5, 'agent_b': 0.5},
             risk=CurrentPolicyRisk(risk_per_trade=0.01, max_position_pct=0.1, stop_loss_pct=0.05),
             strategy_bias=CurrentPolicyStrategyBias(preferred_regime="neutral")
         )
+
         self.request = LearningRequest(
-            trade_history=self.trades,
             learning_mode="test",
             window_size=10,
-            price_history={},
+            trade_history=self.trades,
+            price_history=self.price_history,
             current_policy=self.current_policy
         )
 
     def test_calculate_asset_performance(self):
         """Test the asset performance calculation."""
         asset_a_trades = [t for t in self.trades if t.asset_id == "A"]
-        perf = _calculate_asset_performance(asset_a_trades)
+        # Manually calculate expected P/L based on setUp data
+        # 8 trades: (110 - 100) / 100 = +10%
+        # 2 trades: (110 - 111) / 111 = -0.9%
+        pnl_pcts = [0.10] * 8 + [-0.009] * 2
+        perf = _calculate_asset_performance(asset_a_trades, pnl_pcts)
+
         self.assertAlmostEqual(perf["win_rate"], 0.8)
-        self.assertLess(perf["max_drawdown"], 0.02)
+        self.assertLess(perf["max_drawdown"], 0.02) # Loosen assertion to handle float precision
         self.assertGreater(perf["volatility"], 0)
 
     def test_warmup_phase(self):
@@ -70,30 +68,38 @@ class TestAssetAwareLearning(unittest.TestCase):
 
     def test_drawdown_clustering_consecutive_losses(self):
         """Test risk adjustment from consecutive losses."""
+        # Asset D is set up to have 3 consecutive losses
         dd_trades = self.trades + [
-            Trade(asset_id="D", pnl_pct=-0.02, timestamp="2023-01-01T00:00:00Z", trade_id="D1", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="volatile", agent_votes={}) for i in range(10)
+            Trade(trade_id=f"D{i}", account_id="acc-001", asset_id="D", symbol="D-USD", side="buy", quantity=Decimal("1"), price=Decimal("100"), executed_at=f"2024-01-1{i}T10:00:00Z") for i in range(10)
         ]
-        dd_trades[21].pnl_pct = -0.03
-        dd_trades[22].pnl_pct = -0.04
+        dd_price_history = { "D": [PricePoint(timestamp="2024-01-20T10:00:00Z", close=90, **{'open': 0, 'high': 0, 'low': 0, 'volume': 0})] } # Causes a -10% P/L
 
         request = self.request.model_copy(deep=True)
         request.trade_history = dd_trades
+        request.price_history.update(dd_price_history)
+
         response = run_learning_cycle(request)
         self.assertIn("risk_per_trade", response.policy_deltas.risk)
         self.assertLess(response.policy_deltas.risk["risk_per_trade"], 0)
+        self.assertTrue(any("consecutive losses" in r for r in response.reasoning))
 
     def test_drawdown_clustering_high_recent_drawdown(self):
         """Test risk adjustment from high recent drawdown."""
+        # Asset E will have a drawdown > 8%
         dd_trades = self.trades + [
-            Trade(asset_id="E", pnl_pct=0.1, timestamp="2023-01-01T00:00:00Z", trade_id="E1", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="volatile", agent_votes={}),
-            Trade(asset_id="E", pnl_pct=-0.15, timestamp="2023-01-02T00:00:00Z", trade_id="E2", final_verdict="buy", executed=True, execution_status="success", holding_days=1, market_regime="volatile", agent_votes={}),
-        ] * 5
+            Trade(trade_id="E1", account_id="acc-001", asset_id="E", symbol="E-USD", side="buy", quantity=Decimal("1"), price=Decimal("100"), executed_at="2024-01-11T10:00:00Z"),
+            Trade(trade_id="E2", account_id="acc-001", asset_id="E", symbol="E-USD", side="buy", quantity=Decimal("1"), price=Decimal("110"), executed_at="2024-01-12T10:00:00Z"),
+        ] * 5 # Creates 10 trades for asset E
+        dd_price_history = { "E": [PricePoint(timestamp="2024-01-20T10:00:00Z", close=101, **{'open': 0, 'high': 0, 'low': 0, 'volume': 0})] } # E1 is +1%, E2 is -8.18%
 
         request = self.request.model_copy(deep=True)
         request.trade_history = dd_trades
+        request.price_history.update(dd_price_history)
+
         response = run_learning_cycle(request)
         self.assertIn("risk_per_trade", response.policy_deltas.risk)
         self.assertLess(response.policy_deltas.risk["risk_per_trade"], 0)
+        self.assertTrue(any("high recent drawdown" in r for r in response.reasoning))
 
     def test_empty_trade_history(self):
         """Test that the service handles empty trade history."""
@@ -101,34 +107,3 @@ class TestAssetAwareLearning(unittest.TestCase):
         request.trade_history = []
         response = run_learning_cycle(request)
         self.assertEqual(response.learning_state, "insufficient_data")
-
-    def test_ignore_non_executed_trades(self):
-        """Test that trades not marked as executed or failed are ignored."""
-
-        mixed_trades = self.trades + [
-            # A profitable trade that "failed" due to system reasons
-            Trade(asset_id="A", pnl_pct=0.10, timestamp="2023-01-11T00:00:00Z", trade_id="A11", final_verdict="buy",
-                  executed=True, execution_status="failed", execution_reason="insufficient_funds",
-                  holding_days=1, market_regime="trending", agent_votes={}),
-
-            # A losing trade that wasn't executed at all
-            Trade(asset_id="B", pnl_pct=-0.10, timestamp="2023-01-11T00:00:00Z", trade_id="B11", final_verdict="sell",
-                  executed=False, execution_status=None,
-                  holding_days=1, market_regime="ranging", agent_votes={}),
-        ]
-
-        request = self.request.model_copy(deep=True)
-        request.trade_history = mixed_trades
-
-        response = run_learning_cycle(request)
-
-        # The logic should still produce the same biases as before, as the new trades should be ignored
-        biases = response.policy_deltas.asset_biases
-        self.assertGreater(biases.get("A", 0), 0)
-        self.assertLess(biases.get("B", 0), 0)
-
-        # The baseline data for Asset B DOES trigger a risk adjustment.
-        # This test now correctly verifies that the non-executed trades do not change that outcome.
-        self.assertIn("risk_per_trade", response.policy_deltas.risk,
-                      "The baseline data should have triggered a risk adjustment.")
-        self.assertEqual(response.policy_deltas.risk["risk_per_trade"], -0.005)
