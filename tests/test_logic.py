@@ -37,8 +37,60 @@ class TestAssetAwareLearning(unittest.TestCase):
             window_size=10,
             trade_history=self.trades,
             price_history=self.price_history,
-            current_policy=self.current_policy
+            current_policy=self.current_policy,
+            execution_result=None,
         )
+
+    def test_execution_result_merging(self):
+        """Test that execution_result is merged into the latest trade."""
+        request = self.request.model_copy(deep=True)
+        request.trade_history.append(
+            Trade(trade_id="latest_trade", account_id="acc-001", asset_id="A", symbol="A-USD", side="buy", quantity=Decimal("1"), price=Decimal("120"), executed_at="2024-02-01T12:00:00Z")
+        )
+        request.execution_result = {
+            "status": "executed",
+            "pnl_pct": 0.055,  # 5.5% profit
+            "entry_price": 120.5,
+            "exit_price": 127.1275
+        }
+
+        run_learning_cycle(request)
+
+        # Find the trade that was updated
+        updated_trade = next(t for t in request.trade_history if t.trade_id == "latest_trade")
+
+        self.assertIsNotNone(updated_trade)
+        self.assertAlmostEqual(updated_trade.pnl_pct, Decimal("0.055"))
+        self.assertAlmostEqual(updated_trade.entry_price, Decimal("120.5"))
+        self.assertAlmostEqual(updated_trade.exit_price, Decimal("127.1275"))
+
+    def test_pnl_fallback_logic(self):
+        """Test that PNL is used from the trade if present, otherwise calculated."""
+        # Case 1: pnl_pct is provided in the trade data
+        trade_with_pnl = Trade(trade_id="T1", account_id="acc-001", asset_id="A", symbol="A-USD", side="buy", quantity=Decimal("1"), price=Decimal("100"), executed_at="2024-01-10T10:00:00Z", pnl_pct=Decimal("0.123"))
+
+        # Price history suggests a different PNL, but the provided one should be used
+        price_history = [PricePoint(timestamp="2024-01-20T10:00:00Z", close=110, **{'open': 0, 'high': 0, 'low': 0, 'volume': 0})] # 10% calculated PNL
+
+        request = self.request.model_copy(deep=True)
+        request.trade_history = [trade_with_pnl] * 10 # meet warmup
+        request.price_history={"A": price_history}
+
+        response = run_learning_cycle(request)
+        # The performance score will be high because of the high win rate (from 12.3% PNL)
+        self.assertGreater(response.policy_deltas.asset_biases.get("A", 0), 0)
+
+        # Case 2: pnl_pct is NOT provided, should be calculated
+        trade_without_pnl = Trade(trade_id="T2", account_id="acc-001", asset_id="B", symbol="B-USD", side="buy", quantity=Decimal("1"), price=Decimal("200"), executed_at="2024-01-10T10:00:00Z", pnl_pct=None)
+        price_history_b = [PricePoint(timestamp="2024-01-20T10:00:00Z", close=180, **{'open': 0, 'high': 0, 'low': 0, 'volume': 0})] # -10% calculated PNL
+
+        request.trade_history = [trade_without_pnl] * 10
+        request.price_history = {"B": price_history_b}
+
+        response = run_learning_cycle(request)
+        # The performance score will be low due to the calculated -10% PNL
+        self.assertLess(response.policy_deltas.asset_biases.get("B", 0), 0)
+
 
     def test_calculate_asset_performance(self):
         """Test the asset performance calculation."""

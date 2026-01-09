@@ -26,8 +26,15 @@ MAX_ACCEPTABLE_VOLATILITY = 0.10
 
 def _calculate_trade_pnl_pct(trade: Trade, price_history: List[PricePoint]) -> float:
     """
-    Calculates the Profit/Loss percentage for a single trade based on price history.
+    Calculates the Profit/Loss percentage for a single trade.
+    It uses the pre-computed 'pnl_pct' if available (from execution_result),
+    otherwise it calculates it based on price history.
     """
+    # Prioritize using the PNL from the trade object if it exists.
+    if trade.pnl_pct is not None:
+        return float(trade.pnl_pct)
+
+    # Fallback to calculation if pnl_pct is not provided.
     if not price_history:
         return 0.0
 
@@ -81,6 +88,25 @@ def run_learning_cycle(request: LearningRequest, correlation_id: str = "not-prov
     print(f"[correlation_id={correlation_id}] learning cycle started")
     response = LearningResponse(learning_state="active", policy_deltas=PolicyDeltas())
     reasoning = []
+
+    # --- Pre-processing: Merge execution_result into the latest trade ---
+    if request.execution_result and request.trade_history:
+        if request.execution_result.get("status") == "executed":
+            # Sort trades by executed_at timestamp to find the most recent one
+            request.trade_history.sort(key=lambda t: t.executed_at, reverse=True)
+            latest_trade = request.trade_history[0]
+
+            # Update the latest trade with data from execution_result
+            if 'pnl_pct' in request.execution_result:
+                latest_trade.pnl_pct = Decimal(str(request.execution_result['pnl_pct']))
+            # Assuming the execution_result might contain entry and exit prices.
+            # The exact keys will depend on the Manager's implementation.
+            if 'entry_price' in request.execution_result:
+                latest_trade.entry_price = Decimal(str(request.execution_result['entry_price']))
+            if 'exit_price' in request.execution_result:
+                latest_trade.exit_price = Decimal(str(request.execution_result['exit_price']))
+
+            reasoning.append(f"Merged execution result for trade {latest_trade.trade_id}.")
 
     if not request.trade_history:
         response.learning_state = "insufficient_data"

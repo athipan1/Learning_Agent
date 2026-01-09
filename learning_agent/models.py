@@ -20,6 +20,10 @@ class Trade(BaseModel):
     quantity: Decimal
     price: Decimal
     executed_at: str # ISO-8601 timestamp
+    agents: Dict[str, str] = Field(default_factory=dict)
+    pnl_pct: Optional[Decimal] = None
+    entry_price: Optional[Decimal] = None
+    exit_price: Optional[Decimal] = None
 
 class PricePoint(BaseModel):
     """Represents a single price point in history."""
@@ -50,6 +54,7 @@ class LearningRequest(BaseModel):
     trade_history: List[Trade]
     price_history: Dict[str, List[PricePoint]]
     current_policy: CurrentPolicy
+    execution_result: Optional[dict] = None
 
 # --- Output Contract Models ---
 
