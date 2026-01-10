@@ -1,9 +1,10 @@
 # Stage 1: Builder - Install dependencies
 FROM python:3.12-slim as builder
 
-# Set environment variables to prevent writing .pyc files and to buffer output
+# Set environment variables
 ENV PYTHONDONTWRITEBYTECODE 1
 ENV PYTHONUNBUFFERED 1
+ENV NUMBA_DISABLE_CACHING=1
 
 # Create and activate a virtual environment
 RUN python -m venv /opt/venv

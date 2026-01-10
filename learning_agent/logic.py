@@ -24,34 +24,6 @@ MAX_ACCEPTABLE_DRAWDOWN = 0.20
 MAX_ACCEPTABLE_VOLATILITY = 0.10
 
 
-def _calculate_trade_pnl_pct(trade: Trade, price_history: List[PricePoint]) -> float:
-    """
-    Calculates the Profit/Loss percentage for a single trade.
-    It uses the pre-computed 'pnl_pct' if available (from execution_result),
-    otherwise it calculates it based on price history.
-    """
-    # Prioritize using the PNL from the trade object if it exists.
-    if trade.pnl_pct is not None:
-        return float(trade.pnl_pct)
-
-    # Fallback to calculation if pnl_pct is not provided.
-    if not price_history:
-        return 0.0
-
-    entry_price = float(trade.price)
-    # Assume the exit price is the close of the last known data point
-    exit_price = price_history[-1].close
-
-    if trade.side == "buy":
-        pnl_pct = (exit_price - entry_price) / entry_price
-    elif trade.side == "sell":
-        pnl_pct = (entry_price - exit_price) / entry_price
-    else:
-        pnl_pct = 0.0
-
-    return pnl_pct
-
-
 def _calculate_asset_performance(trades: List[Trade], pnl_pcts: List[float]) -> Dict:
     """
     Calculates performance metrics for a single asset.
@@ -80,10 +52,10 @@ def _calculate_asset_performance(trades: List[Trade], pnl_pcts: List[float]) -> 
         "trade_count": len(trades)
     }
 
-def run_learning_cycle(request: LearningRequest, correlation_id: str = "not-provided") -> LearningResponse:
+def run_learning_cycle(request: LearningRequest, bias_state: Dict[str, Dict[str, float]], correlation_id: str = "not-provided") -> LearningResponse:
     """
-    Asset-aware learning cycle. Analyzes trade history grouped by asset
-    and recommends policy adjustments.
+    Asset-aware learning cycle. Analyzes trade history grouped by asset,
+    incorporates existing biases, and recommends policy adjustments.
     """
     print(f"[correlation_id={correlation_id}] learning cycle started")
     response = LearningResponse(learning_state="active", policy_deltas=PolicyDeltas())
@@ -128,35 +100,48 @@ def run_learning_cycle(request: LearningRequest, correlation_id: str = "not-prov
             continue
 
         # --- P/L Calculation ---
-        asset_price_history = request.price_history.get(asset_id, [])
-        pnl_pcts = [_calculate_trade_pnl_pct(t, asset_price_history) for t in trades]
+        pnl_pcts = [float(t.pnl_pct) for t in trades]
 
         # --- Performance and Scoring ---
         perf = _calculate_asset_performance(trades, pnl_pcts)
+        current_bias = bias_state.get(asset_id, {"bull_bias": 0.0, "bear_bias": 0.0, "vol_bias": 0.0})
 
         # Normalize metrics to scores (higher is better)
         wr_score = perf["win_rate"]
         mdd_score = 1.0 - min(1.0, perf["max_drawdown"] / MAX_ACCEPTABLE_DRAWDOWN)
-        vol_score = 1.0 - min(1.0, perf["volatility"] / MAX_ACCEPTABLE_VOLATILITY)
 
-        performance_score = (WEIGHT_WIN_RATE * wr_score) + \
-                            (WEIGHT_MAX_DRAWDOWN * mdd_score) + \
-                            (WEIGHT_VOLATILITY * vol_score)
+        # Adjust volatility score based on vol_bias
+        base_vol_score = 1.0 - min(1.0, perf["volatility"] / MAX_ACCEPTABLE_VOLATILITY)
+        vol_score = base_vol_score + current_bias.get("vol_bias", 0.0)
+        vol_score = max(0.0, min(1.0, vol_score)) # Clamp after adjustment
+
+        base_performance_score = (WEIGHT_WIN_RATE * wr_score) + \
+                                 (WEIGHT_MAX_DRAWDOWN * mdd_score) + \
+                                 (WEIGHT_VOLATILITY * vol_score)
+
+        # Incorporate directional biases (bull/bear) into the score
+        # A positive bull_bias rewards good performance more, a negative one cushions bad performance less.
+        # A positive bear_bias punishes bad performance more, a negative one cushions good performance less.
+        directional_bias_adjustment = current_bias.get("bull_bias", 0.0) if base_performance_score > 0.5 else -current_bias.get("bear_bias", 0.0)
+        performance_score = base_performance_score + directional_bias_adjustment
+        # Clamp score to [0, 1] range
+        performance_score = max(0.0, min(1.0, performance_score))
+
 
         bias_delta = 0.0
         if performance_score > PERFORMANCE_UPPER_THRESHOLD:
             bias_delta = BIAS_ADJUSTMENT_INCREMENT
-            reasoning.append(f"Asset '{asset_id}' performance score ({performance_score:.2f}) is above {PERFORMANCE_UPPER_THRESHOLD}. Applying positive bias.")
+            reasoning.append(f"Asset '{asset_id}' performance score ({performance_score:.2f}, adj from {base_performance_score:.2f}) is above {PERFORMANCE_UPPER_THRESHOLD}. Applying positive bias.")
         elif performance_score < PERFORMANCE_LOWER_THRESHOLD:
             bias_delta = -BIAS_ADJUSTMENT_INCREMENT
-            reasoning.append(f"Asset '{asset_id}' performance score ({performance_score:.2f}) is below {PERFORMANCE_LOWER_THRESHOLD}. Applying negative bias.")
+            reasoning.append(f"Asset '{asset_id}' performance score ({performance_score:.2f}, adj from {base_performance_score:.2f}) is below {PERFORMANCE_LOWER_THRESHOLD}. Applying negative bias.")
 
         if bias_delta != 0.0:
             response.policy_deltas.asset_biases[asset_id] = bias_delta
 
         # --- Drawdown Clustering Detection ---
         # Sort trades and their P/Ls by execution time to get the most recent ones
-        sorted_trades_and_pnl = sorted(zip(trades, pnl_pcts), key=lambda x: x[0].executed_at, reverse=True)
+        sorted_trades_and_pnl = sorted(zip(trades, pnl_pcts), key=lambda x: x[0].timestamp, reverse=True)
         recent_trades = [tp[0] for tp in sorted_trades_and_pnl[:RECENT_TRADES_WINDOW]]
         recent_pnl = [tp[1] for tp in sorted_trades_and_pnl[:RECENT_TRADES_WINDOW]]
 

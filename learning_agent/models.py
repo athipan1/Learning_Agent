@@ -11,19 +11,15 @@ class AgentVote(BaseModel):
     confidence: float
 
 class Trade(BaseModel):
-    """Represents a single historical trade, as received from the Manager."""
-    trade_id: str # uuid
-    account_id: str # uuid
+    """Represents a single, standardized historical trade."""
+    trade_id: str
     asset_id: str
-    symbol: str
     side: Literal["buy", "sell"]
+    entry_price: Decimal
+    exit_price: Decimal
     quantity: Decimal
-    price: Decimal
-    executed_at: str # ISO-8601 timestamp
-    agents: Dict[str, str] = Field(default_factory=dict)
-    pnl_pct: Optional[Decimal] = None
-    entry_price: Optional[Decimal] = None
-    exit_price: Optional[Decimal] = None
+    timestamp: str  # ISO-8601 timestamp
+    pnl_pct: Decimal
 
 class PricePoint(BaseModel):
     """Represents a single price point in history."""
@@ -73,6 +69,34 @@ class LearningResponse(BaseModel):
     confidence_score: float = 0.0
     policy_deltas: PolicyDeltas = Field(default_factory=PolicyDeltas)
     reasoning: List[str] = Field(default_factory=list)
+
+# --- Bias Update Models ---
+
+class BiasDelta(BaseModel):
+    """Represents the delta changes for different bias types."""
+    bull_bias: float = 0.0
+    bear_bias: float = 0.0
+    vol_bias: float = 0.0
+
+class BiasUpdateRequest(BaseModel):
+    """The input data structure for a single bias update."""
+    asset_id: str
+    bias_delta: BiasDelta
+    source: Literal["execution", "simulation", "backtest"]
+    timestamp: str
+
+class CurrentBias(BaseModel):
+    """Represents the current bias state for an asset."""
+    bull_bias: float
+    bear_bias: float
+    vol_bias: float
+
+class BiasUpdateResponse(BaseModel):
+    """The output data structure for the /learning/update-biases endpoint."""
+    asset_id: str
+    current_bias: CurrentBias
+    updated: bool
+
 
 # --- Market Regime Analysis Models ---
 
