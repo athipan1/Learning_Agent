@@ -6,3 +6,5 @@ pandas-ta
 numpy
 pytest
 httpx
+psycopg2-binary
+SQLAlchemy
