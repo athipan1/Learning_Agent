@@ -1,28 +1,25 @@
-from dataclasses import dataclass
-from typing import Dict, Optional
 
-@dataclass
-class AgentVote:
-    action: str
-    confidence_score: float
-    version: str
+from sqlalchemy import Column, String, Float, DateTime
+from sqlalchemy.orm import declarative_base
+from datetime import datetime
 
-@dataclass
-class OrchestratorConfig:
-    agent_weights: Dict[str, float]
-    confidence_threshold: Dict[str, float]
+Base = declarative_base()
 
-@dataclass
-class Trade:
-    trade_id: str
-    ticker: str
-    final_verdict: str
-    executed: bool
-    entry_price: float
-    exit_price: float
-    pnl_pct: float
-    holding_days: int
-    market_regime: str
-    agent_votes: Dict[str, AgentVote]
-    orchestrator_config: OrchestratorConfig
-    timestamp: str
+class BiasState(Base):
+    """
+    SQLAlchemy model for persisting the BIAS_STATE of each asset.
+    """
+    __tablename__ = 'bias_states'
+
+    asset_id = Column(String, primary_key=True, index=True)
+    bull_bias = Column(Float, nullable=False, default=0.0)
+    bear_bias = Column(Float, nullable=False, default=0.0)
+    vol_bias = Column(Float, nullable=False, default=0.0)
+    last_updated = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "bull_bias": self.bull_bias,
+            "bear_bias": self.bear_bias,
+            "vol_bias": self.vol_bias
+        }

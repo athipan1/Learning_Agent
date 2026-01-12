@@ -1,9 +1,11 @@
 
 from .models import LearningRequest, LearningResponse, PolicyDeltas, Trade, PricePoint
+from .db_agent_client import fetch_trade_history
 from typing import List, Dict
 from decimal import Decimal
 import numpy as np
 from collections import defaultdict
+import logging
 
 # --- Constants for Asset-Aware Learning ---
 ASSET_MIN_TRADES_WARMUP = 10
@@ -52,42 +54,57 @@ def _calculate_asset_performance(trades: List[Trade], pnl_pcts: List[float]) -> 
         "trade_count": len(trades)
     }
 
-def run_learning_cycle(request: LearningRequest, bias_state: Dict[str, Dict[str, float]], correlation_id: str = "not-provided") -> LearningResponse:
+async def run_learning_cycle(request: LearningRequest, bias_state: Dict[str, Dict[str, float]], correlation_id: str = "not-provided") -> LearningResponse:
     """
-    Asset-aware learning cycle. Analyzes trade history grouped by asset,
-    incorporates existing biases, and recommends policy adjustments.
+    Hybrid, asset-aware learning cycle. Fetches historical data, merges it with
+    request data, analyzes performance, and recommends policy adjustments.
     """
-    print(f"[correlation_id={correlation_id}] learning cycle started")
+    logging.info(f"[correlation_id={correlation_id}] learning cycle started")
     response = LearningResponse(learning_state="active", policy_deltas=PolicyDeltas())
     reasoning = []
 
-    # --- Pre-processing: Merge execution_result into the latest trade ---
+    # --- Step 1: Pre-process execution_result from the request ---
+    # This ensures the most recent trade data is up-to-date before merging.
     if request.execution_result and request.trade_history:
         if request.execution_result.get("status") == "executed":
-            # Sort trades by executed_at timestamp to find the most recent one
             request.trade_history.sort(key=lambda t: t.executed_at, reverse=True)
             latest_trade = request.trade_history[0]
-
-            # Update the latest trade with data from execution_result
             if 'pnl_pct' in request.execution_result:
                 latest_trade.pnl_pct = Decimal(str(request.execution_result['pnl_pct']))
-            # Assuming the execution_result might contain entry and exit prices.
-            # The exact keys will depend on the Manager's implementation.
             if 'entry_price' in request.execution_result:
                 latest_trade.entry_price = Decimal(str(request.execution_result['entry_price']))
             if 'exit_price' in request.execution_result:
                 latest_trade.exit_price = Decimal(str(request.execution_result['exit_price']))
-
             reasoning.append(f"Merged execution result for trade {latest_trade.trade_id}.")
 
-    if not request.trade_history:
+    # --- Step 2: Fetch and merge trade histories ---
+    # Identify unique assets from the request to fetch their histories
+    asset_ids_in_request = {t.asset_id for t in request.trade_history}
+
+    all_trades = {} # Use a dict to automatically handle de-duplication
+
+    # Add trades from the request first
+    for trade in request.trade_history:
+        all_trades[trade.trade_id] = trade
+
+    # Fetch historical trades for each asset and merge them
+    for asset_id in asset_ids_in_request:
+        historical_trades = await fetch_trade_history(asset_id=asset_id)
+        for trade in historical_trades:
+            if trade.trade_id not in all_trades:
+                all_trades[trade.trade_id] = trade
+
+    final_trade_list = list(all_trades.values())
+
+    if not final_trade_list:
         response.learning_state = "insufficient_data"
-        response.reasoning.append("No trades found in the history.")
-        print(f"[correlation_id={correlation_id}] learning cycle ended: no trades provided")
+        response.reasoning.append("No trades found in history (request + database).")
+        logging.warning(f"[correlation_id={correlation_id}] learning cycle ended: no trades provided.")
         return response
 
+    # --- Step 3: Group trades by asset for analysis ---
     trades_by_asset = defaultdict(list)
-    for trade in request.trade_history:
+    for trade in final_trade_list:
         trades_by_asset[trade.asset_id].append(trade)
 
     global_risk_adjustment_needed = False
@@ -109,43 +126,29 @@ def run_learning_cycle(request: LearningRequest, bias_state: Dict[str, Dict[str,
         # Normalize metrics to scores (higher is better)
         wr_score = perf["win_rate"]
         mdd_score = 1.0 - min(1.0, perf["max_drawdown"] / MAX_ACCEPTABLE_DRAWDOWN)
-
-        # Adjust volatility score based on vol_bias
         base_vol_score = 1.0 - min(1.0, perf["volatility"] / MAX_ACCEPTABLE_VOLATILITY)
-        vol_score = base_vol_score + current_bias.get("vol_bias", 0.0)
-        vol_score = max(0.0, min(1.0, vol_score)) # Clamp after adjustment
+        vol_score = max(0.0, min(1.0, base_vol_score + current_bias.get("vol_bias", 0.0)))
 
-        base_performance_score = (WEIGHT_WIN_RATE * wr_score) + \
-                                 (WEIGHT_MAX_DRAWDOWN * mdd_score) + \
-                                 (WEIGHT_VOLATILITY * vol_score)
+        base_performance_score = (WEIGHT_WIN_RATE * wr_score) + (WEIGHT_MAX_DRAWDOWN * mdd_score) + (WEIGHT_VOLATILITY * vol_score)
 
-        # Incorporate directional biases (bull/bear) into the score
-        # A positive bull_bias rewards good performance more, a negative one cushions bad performance less.
-        # A positive bear_bias punishes bad performance more, a negative one cushions good performance less.
         directional_bias_adjustment = current_bias.get("bull_bias", 0.0) if base_performance_score > 0.5 else -current_bias.get("bear_bias", 0.0)
-        performance_score = base_performance_score + directional_bias_adjustment
-        # Clamp score to [0, 1] range
-        performance_score = max(0.0, min(1.0, performance_score))
-
+        performance_score = max(0.0, min(1.0, base_performance_score + directional_bias_adjustment))
 
         bias_delta = 0.0
         if performance_score > PERFORMANCE_UPPER_THRESHOLD:
             bias_delta = BIAS_ADJUSTMENT_INCREMENT
-            reasoning.append(f"Asset '{asset_id}' performance score ({performance_score:.2f}, adj from {base_performance_score:.2f}) is above {PERFORMANCE_UPPER_THRESHOLD}. Applying positive bias.")
+            reasoning.append(f"Asset '{asset_id}' performance score ({performance_score:.2f}) is above {PERFORMANCE_UPPER_THRESHOLD}. Applying positive bias.")
         elif performance_score < PERFORMANCE_LOWER_THRESHOLD:
             bias_delta = -BIAS_ADJUSTMENT_INCREMENT
-            reasoning.append(f"Asset '{asset_id}' performance score ({performance_score:.2f}, adj from {base_performance_score:.2f}) is below {PERFORMANCE_LOWER_THRESHOLD}. Applying negative bias.")
+            reasoning.append(f"Asset '{asset_id}' performance score ({performance_score:.2f}) is below {PERFORMANCE_LOWER_THRESHOLD}. Applying negative bias.")
 
         if bias_delta != 0.0:
             response.policy_deltas.asset_biases[asset_id] = bias_delta
 
         # --- Drawdown Clustering Detection ---
-        # Sort trades and their P/Ls by execution time to get the most recent ones
         sorted_trades_and_pnl = sorted(zip(trades, pnl_pcts), key=lambda x: x[0].timestamp, reverse=True)
-        recent_trades = [tp[0] for tp in sorted_trades_and_pnl[:RECENT_TRADES_WINDOW]]
         recent_pnl = [tp[1] for tp in sorted_trades_and_pnl[:RECENT_TRADES_WINDOW]]
 
-        # Check for consecutive losses
         consecutive_losses = 0
         for pnl in recent_pnl:
             if pnl < 0:
@@ -157,7 +160,7 @@ def run_learning_cycle(request: LearningRequest, bias_state: Dict[str, Dict[str,
             else:
                 consecutive_losses = 0
 
-        # Check for high recent drawdown
+        recent_trades = [tp[0] for tp in sorted_trades_and_pnl[:RECENT_TRADES_WINDOW]]
         recent_perf = _calculate_asset_performance(recent_trades, recent_pnl)
         if recent_perf["max_drawdown"] > MAX_DRAWDOWN_THRESHOLD:
             global_risk_adjustment_needed = True
@@ -173,5 +176,5 @@ def run_learning_cycle(request: LearningRequest, bias_state: Dict[str, Dict[str,
         response.learning_state = "success"
 
     response.reasoning = reasoning
-    print(f"[correlation_id={correlation_id}] policy updated")
+    logging.info(f"[correlation_id={correlation_id}] policy updated")
     return response
