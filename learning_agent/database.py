@@ -12,7 +12,8 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/l
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set.")
 
-engine = create_engine(DATABASE_URL)
+SQLALCHEMY_ECHO = os.getenv("SQLALCHEMY_ECHO", "False").lower() in ("true", "1", "t")
+engine = create_engine(DATABASE_URL, echo=SQLALCHEMY_ECHO)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def init_db():
