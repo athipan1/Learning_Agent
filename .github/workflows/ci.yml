@@ -19,14 +19,8 @@ jobs:
           echo "POSTGRES_PASSWORD=password" >> .env
           echo "POSTGRES_DB=trading_db_test" >> .env
 
-      - name: Build and Run Docker Containers
-        run: docker compose up -d --build
-
-      - name: Wait for services to be ready
-        run: sleep 15
-
       - name: Run tests
-        run: docker compose exec -T learning-agent python -m pytest
+        run: docker compose run --rm learning-agent-ci
 
       - name: Clean up containers
         if: always()

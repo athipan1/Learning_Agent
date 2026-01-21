@@ -14,7 +14,21 @@ ENV PATH="/opt/venv/bin:$PATH"
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Stage 2: Final - Create the production image
+# Stage 2: Dev - For running tests
+FROM builder as dev
+
+ENV APP_HOME=/home/app/web
+WORKDIR $APP_HOME
+
+# Copy the application and test code
+COPY ./learning_agent ./learning_agent
+COPY ./tests ./tests
+
+# Set the default command to run tests
+CMD ["pytest"]
+
+
+# Stage 3: Final - Create the production image
 FROM python:3.12-slim
 
 # Create a non-root user and group
