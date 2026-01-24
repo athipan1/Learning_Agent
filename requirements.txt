@@ -8,3 +8,4 @@ pytest
 httpx
 psycopg2-binary
 SQLAlchemy
+alpaca-trade-api

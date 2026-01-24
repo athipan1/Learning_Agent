@@ -1,0 +1,54 @@
+
+name: Daily Learning Pipeline
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry Run Mode'
+        required: true
+        default: 'false'
+        type: boolean
+
+  # Runs the job daily at 01:00 UTC
+  schedule:
+    - cron: '0 1 * * *'
+
+jobs:
+  run_learning_pipeline:
+    runs-on: ubuntu-latest
+    name: Execute Daily Learning Analysis
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10' # Specify a stable Python version
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Learning Pipeline
+        # This is the core step. It runs the main script of our learning pipeline.
+        # It uses GitHub Secrets to securely pass credentials.
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ALPACA_API_KEY: ${{ secrets.ALPACA_API_KEY }}
+          ALPACA_SECRET_KEY: ${{ secrets.ALPACA_SECRET_KEY }}
+          # The dry_run input can be used in the script to alter behavior,
+          # though the current Python script doesn't explicitly use it.
+          # For now, its presence in the UI is for operational clarity.
+          IS_DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          python -m learning_agent.learning_pipeline.main
+
+      - name: Output Summary
+        # This step provides a clear log message indicating the outcome.
+        run: |
+          echo "Learning pipeline execution completed successfully at $(date)."
