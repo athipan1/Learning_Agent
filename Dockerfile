@@ -4,7 +4,7 @@ FROM python:3.12-slim as builder
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    NUMBA_DISABLE_CACHING=1
+    NUMBA_CACHE_DIR="/tmp/numba_cache"
 
 # Create and activate a virtual environment
 RUN python -m venv /opt/venv
@@ -36,7 +36,7 @@ RUN addgroup --system app && adduser --system --group app
 # Set environment variables
 ENV HOME=/home/app \
     APP_HOME=/home/app/web \
-    NUMBA_DISABLE_CACHING=1
+    NUMBA_CACHE_DIR="/tmp/numba_cache"
 
 RUN mkdir -p $APP_HOME
 WORKDIR $APP_HOME
