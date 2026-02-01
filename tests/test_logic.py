@@ -10,16 +10,16 @@ class TestAssetAwareLearning(unittest.IsolatedAsyncioTestCase):
         """Set up mock data for both request and fetched history."""
         # Trades included in the API request
         self.request_trades = [
-            Trade(trade_id="A10", asset_id="A", side="buy", quantity=Decimal("1"), entry_price=Decimal("100"), exit_price=Decimal("101"), timestamp="2024-01-20T10:00:00Z", pnl_pct=Decimal("0.01")),
-            Trade(trade_id="B10", asset_id="B", side="sell", quantity=Decimal("1"), entry_price=Decimal("200"), exit_price=Decimal("201"), timestamp="2024-01-20T10:00:00Z", pnl_pct=Decimal("-0.005")),
-            Trade(trade_id="C5", asset_id="C", side="buy", quantity=Decimal("1"), entry_price=Decimal("50"), exit_price=Decimal("49"), timestamp="2024-01-15T10:00:00Z", pnl_pct=Decimal("-0.02")),
+            Trade(trade_id="A10", asset_id="A", side="buy", quantity=Decimal("1"), entry_price=Decimal("100"), exit_price=Decimal("101"), executed_at="2024-01-20T10:00:00Z", pnl_pct=Decimal("0.01")),
+            Trade(trade_id="B10", asset_id="B", side="sell", quantity=Decimal("1"), entry_price=Decimal("200"), exit_price=Decimal("201"), executed_at="2024-01-20T10:00:00Z", pnl_pct=Decimal("-0.005")),
+            Trade(trade_id="C5", asset_id="C", side="buy", quantity=Decimal("1"), entry_price=Decimal("50"), exit_price=Decimal("49"), executed_at="2024-01-15T10:00:00Z", pnl_pct=Decimal("-0.02")),
         ]
 
         # Trades that will be returned by the mocked fetch_trade_history
         self.historical_trades = {
-            "A": [Trade(trade_id=f"A{i}", asset_id="A", side="buy", quantity=Decimal("1"), entry_price=Decimal("100"), exit_price=Decimal("101"), timestamp=f"2024-01-{10+i:02d}T10:00:00Z", pnl_pct=Decimal("0.01")) for i in range(9)],
-            "B": [Trade(trade_id=f"B{i}", asset_id="B", side="sell", quantity=Decimal("1"), entry_price=Decimal("200"), exit_price=Decimal("201"), timestamp=f"2024-01-{10+i:02d}T10:00:00Z", pnl_pct=Decimal("-0.005")) for i in range(9)],
-            "C": [Trade(trade_id=f"C{i}", asset_id="C", side="buy", quantity=Decimal("1"), entry_price=Decimal("50"), exit_price=Decimal("49"), timestamp=f"2024-01-{10+i:02d}T10:00:00Z", pnl_pct=Decimal("-0.02")) for i in range(4)],
+            "A": [Trade(trade_id=f"A{i}", asset_id="A", side="buy", quantity=Decimal("1"), entry_price=Decimal("100"), exit_price=Decimal("101"), executed_at=f"2024-01-{10+i:02d}T10:00:00Z", pnl_pct=Decimal("0.01")) for i in range(9)],
+            "B": [Trade(trade_id=f"B{i}", asset_id="B", side="sell", quantity=Decimal("1"), entry_price=Decimal("200"), exit_price=Decimal("201"), executed_at=f"2024-01-{10+i:02d}T10:00:00Z", pnl_pct=Decimal("-0.005")) for i in range(9)],
+            "C": [Trade(trade_id=f"C{i}", asset_id="C", side="buy", quantity=Decimal("1"), entry_price=Decimal("50"), exit_price=Decimal("49"), executed_at=f"2024-01-{10+i:02d}T10:00:00Z", pnl_pct=Decimal("-0.02")) for i in range(4)],
         }
 
         self.current_policy = CurrentPolicy(
@@ -74,8 +74,8 @@ class TestAssetAwareLearning(unittest.IsolatedAsyncioTestCase):
     async def test_drawdown_clustering_consecutive_losses(self, mock_fetch):
         """Test risk adjustment from consecutive losses in combined history."""
         # Asset D has 10 consecutive losses, split between request and history
-        historical_d = [Trade(trade_id=f"D{i}", asset_id="D", side="buy", quantity=Decimal("1"), entry_price=Decimal("100"), exit_price=Decimal("99"), timestamp=f"2024-01-1{i}T10:00:00Z", pnl_pct=Decimal("-0.01")) for i in range(9)]
-        request_d = [Trade(trade_id="D9", asset_id="D", side="buy", quantity=Decimal("1"), entry_price=Decimal("100"), exit_price=Decimal("99"), timestamp="2024-01-19T10:00:00Z", pnl_pct=Decimal("-0.01"))]
+        historical_d = [Trade(trade_id=f"D{i}", asset_id="D", side="buy", quantity=Decimal("1"), entry_price=Decimal("100"), exit_price=Decimal("99"), executed_at=f"2024-01-1{i}T10:00:00Z", pnl_pct=Decimal("-0.01")) for i in range(9)]
+        request_d = [Trade(trade_id="D9", asset_id="D", side="buy", quantity=Decimal("1"), entry_price=Decimal("100"), exit_price=Decimal("99"), executed_at="2024-01-19T10:00:00Z", pnl_pct=Decimal("-0.01"))]
 
         mock_fetch.side_effect = lambda asset_id: historical_d if asset_id == "D" else []
 

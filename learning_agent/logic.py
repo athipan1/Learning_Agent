@@ -146,7 +146,7 @@ async def run_learning_cycle(request: LearningRequest, bias_state: Dict[str, Dic
             response.policy_deltas.asset_biases[asset_id] = bias_delta
 
         # --- Drawdown Clustering Detection ---
-        sorted_trades_and_pnl = sorted(zip(trades, pnl_pcts), key=lambda x: x[0].timestamp, reverse=True)
+        sorted_trades_and_pnl = sorted(zip(trades, pnl_pcts), key=lambda x: x[0].executed_at, reverse=True)
         recent_pnl = [tp[1] for tp in sorted_trades_and_pnl[:RECENT_TRADES_WINDOW]]
 
         consecutive_losses = 0

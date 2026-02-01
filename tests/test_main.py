@@ -102,7 +102,7 @@ class TestMain(unittest.TestCase):
 
         trades = [
             Trade(trade_id=str(i), asset_id="BTC-USD", side="buy", entry_price=Decimal("50000"),
-                  exit_price=Decimal("51000"), quantity=Decimal("1"), timestamp="2026-01-08T09:00:00Z",
+                  exit_price=Decimal("51000"), quantity=Decimal("1"), executed_at="2026-01-08T09:00:00Z",
                   pnl_pct=Decimal("0.02")) for i in range(10)
         ]
         request_body = self._create_dummy_learning_request_body(trades)
@@ -126,7 +126,7 @@ class TestMain(unittest.TestCase):
 
         trades = [
             Trade(trade_id=str(i), asset_id="BTC-USD", side="buy", entry_price=Decimal("50000"),
-                  exit_price=Decimal("51000"), quantity=Decimal("1"), timestamp="2026-01-08T09:00:00Z",
+                  exit_price=Decimal("51000"), quantity=Decimal("1"), executed_at="2026-01-08T09:00:00Z",
                   pnl_pct=Decimal("0.02")) for i in range(10)
         ]
         request_body = self._create_dummy_learning_request_body(trades)
