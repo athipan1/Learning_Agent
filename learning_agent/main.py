@@ -2,11 +2,11 @@
 from fastapi import FastAPI, Request
 from .models import (
     LearningRequest, LearningResponse, MarketRegimeRequest, MarketRegimeResponse,
-    BiasUpdateRequest, BiasUpdateResponse, CurrentBias
+    BiasUpdateRequest, BiasUpdateResponse, CurrentBias, StandardAgentResponse
 )
 from .logic import run_learning_cycle
 from .market_regime import classify_market_regime
-from .database import init_db, load_bias_state, save_bias_state
+from .database import init_db, load_bias_state, save_bias_state, check_db_connection
 from typing import Dict, List, Union
 from collections import defaultdict
 import logging
@@ -36,15 +36,19 @@ def on_startup():
         # If loading fails, start with a fresh defaultdict to ensure the app can still run.
         BIAS_STATE = defaultdict(lambda: {"bull_bias": 0.0, "bear_bias": 0.0, "vol_bias": 0.0})
 
-@app.post("/learn", response_model=LearningResponse)
-async def learn(request: LearningRequest, req: Request) -> LearningResponse:
+@app.post("/learn", response_model=StandardAgentResponse[LearningResponse])
+async def learn(request: LearningRequest, req: Request) -> StandardAgentResponse[LearningResponse]:
     """
     Analyzes trade history and portfolio metrics to generate incremental
     policy adjustments.
     """
     correlation_id = req.headers.get("X-Correlation-ID")
     # The learning cycle now uses the globally loaded (and persisted) BIAS_STATE
-    return await run_learning_cycle(request, BIAS_STATE, correlation_id=correlation_id)
+    learning_result = await run_learning_cycle(request, BIAS_STATE, correlation_id=correlation_id)
+    return StandardAgentResponse(
+        status="success",
+        data=learning_result
+    )
 
 @app.post("/market-regime", response_model=MarketRegimeResponse)
 async def market_regime(request: MarketRegimeRequest) -> MarketRegimeResponse:
@@ -101,6 +105,13 @@ async def update_biases(request: Union[List[BiasUpdateRequest], BiasUpdateReques
 
     return responses
 
-@app.get("/health")
+@app.get("/health", response_model=StandardAgentResponse)
 def health():
-    return {"status": "ok"}
+    db_connected = check_db_connection()
+    return StandardAgentResponse(
+        status="success",
+        data={
+            "status": "healthy",
+            "database": "connected" if db_connected else "disconnected"
+        }
+    )
