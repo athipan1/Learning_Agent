@@ -1,7 +1,21 @@
 
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional, Any, Literal
+from typing import List, Dict, Optional, Any, Literal, Generic, TypeVar
 from decimal import Decimal
+from datetime import datetime
+
+T = TypeVar("T")
+
+# --- Standard Response Model ---
+
+class StandardAgentResponse(BaseModel, Generic[T]):
+    """Standardized response format for all agents."""
+    status: str
+    agent_type: str = "learning"
+    version: str = "1.0"
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    data: Optional[T] = None
+    error: Optional[str] = None
 
 # --- Input Contract Models ---
 

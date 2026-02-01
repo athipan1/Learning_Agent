@@ -1,6 +1,6 @@
 
 import os
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from .schemas import Base, BiasState
 from typing import Dict
@@ -8,13 +8,41 @@ from collections import defaultdict
 import logging
 
 # --- Database Configuration ---
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/learning_agent_db")
+USE_SQLITE = os.getenv("USE_SQLITE", "false").lower() in ("true", "1", "t")
+
+if USE_SQLITE:
+    DATABASE_URL = "sqlite:///./learning_agent.db"
+    logging.info(f"Using SQLite database: {DATABASE_URL}")
+else:
+    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/learning_agent_db")
+
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set.")
+    raise ValueError("DATABASE_URL environment variable is not set and USE_SQLITE is false.")
 
 SQLALCHEMY_ECHO = os.getenv("SQLALCHEMY_ECHO", "False").lower() in ("true", "1", "t")
-engine = create_engine(DATABASE_URL, echo=SQLALCHEMY_ECHO)
+
+# SQLite needs check_same_thread=False for multi-threaded access in FastAPI
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False}, echo=SQLALCHEMY_ECHO)
+else:
+    engine = create_engine(DATABASE_URL, echo=SQLALCHEMY_ECHO)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def check_db_connection() -> bool:
+    """
+    Checks if the database is reachable.
+    """
+    db = SessionLocal()
+    try:
+        # For both SQLite and PostgreSQL, this simple query should work.
+        db.execute(text("SELECT 1"))
+        return True
+    except Exception as e:
+        logging.error(f"Database connection check failed: {e}")
+        return False
+    finally:
+        db.close()
 
 def init_db():
     """

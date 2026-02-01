@@ -45,9 +45,14 @@ class TestMain(unittest.TestCase):
         }
 
     def test_health_check(self):
-        response = self.client.get("/health")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "ok"})
+        with patch('learning_agent.main.check_db_connection', return_value=True):
+            response = self.client.get("/health")
+            self.assertEqual(response.status_code, 200)
+            data = response.json()
+            self.assertEqual(data["status"], "success")
+            self.assertEqual(data["agent_type"], "learning")
+            self.assertEqual(data["data"], {"status": "healthy", "database": "connected"})
+            self.assertIn("timestamp", data)
 
     def test_update_biases_single(self):
         request_body = self._get_base_bias_update_request("AAPL", {"bull_bias": 0.1})
@@ -105,7 +110,8 @@ class TestMain(unittest.TestCase):
         response = self.client.post("/learn", json=request_body)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data["learning_state"], "success")
+        self.assertEqual(data["status"], "success")
+        self.assertEqual(data["data"]["learning_state"], "success")
         mock_fetch_history.assert_called_once_with(asset_id="BTC-USD")
 
     @patch('learning_agent.logic.fetch_trade_history', new_callable=AsyncMock)
@@ -129,5 +135,6 @@ class TestMain(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
 
-        self.assertIn("BTC-USD", data["policy_deltas"]["asset_biases"])
-        self.assertGreater(data["policy_deltas"]["asset_biases"]["BTC-USD"], 0)
+        self.assertEqual(data["status"], "success")
+        self.assertIn("BTC-USD", data["data"]["policy_deltas"]["asset_biases"])
+        self.assertGreater(data["data"]["policy_deltas"]["asset_biases"]["BTC-USD"], 0)
