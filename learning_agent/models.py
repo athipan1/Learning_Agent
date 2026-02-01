@@ -2,7 +2,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional, Any, Literal, Generic, TypeVar
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, UTC
 
 T = TypeVar("T")
 
@@ -13,9 +13,9 @@ class StandardAgentResponse(BaseModel, Generic[T]):
     status: str
     agent_type: str = "learning"
     version: str = "1.0"
-    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
+    timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat().replace("+00:00", "Z"))
     data: Optional[T] = None
-    error: Optional[str] = None
+    error: Optional[Dict[str, Any]] = None
 
 # --- Input Contract Models ---
 
@@ -32,7 +32,7 @@ class Trade(BaseModel):
     entry_price: Decimal
     exit_price: Decimal
     quantity: Decimal
-    timestamp: str  # ISO-8601 timestamp
+    executed_at: str  # ISO-8601 timestamp
     pnl_pct: Decimal
 
 class PricePoint(BaseModel):
