@@ -6,7 +6,7 @@ import logging
 from .models import Trade
 
 # --- Configuration ---
-DB_AGENT_BASE_URL = os.getenv("DB_AGENT_URL", "http://localhost:8001/api/v1")
+DB_AGENT_BASE_URL = os.getenv("DB_AGENT_URL")
 if not DB_AGENT_BASE_URL:
     raise ValueError("DB_AGENT_URL environment variable is not set.")
 
@@ -31,7 +31,13 @@ async def fetch_trade_history(asset_id: Optional[str] = None) -> List[Trade]:
             response = await client.get(endpoint, params=params, timeout=10.0)
             response.raise_for_status()  # Raise an exception for 4xx or 5xx status codes
 
-            trade_data = response.json()
+            response_json = response.json()
+
+            # The Database Agent now returns a StandardAgentResponse
+            if isinstance(response_json, dict) and "data" in response_json:
+                trade_data = response_json["data"]
+            else:
+                trade_data = response_json
 
             # Parse the raw dictionary data into Pydantic Trade models
             trades = [Trade(**data) for data in trade_data]

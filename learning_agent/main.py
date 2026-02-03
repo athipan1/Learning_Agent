@@ -2,7 +2,8 @@
 from fastapi import FastAPI, Request
 from .models import (
     LearningRequest, LearningResponse, MarketRegimeRequest, MarketRegimeResponse,
-    BiasUpdateRequest, BiasUpdateResponse, CurrentBias, StandardAgentResponse
+    BiasUpdateRequest, BiasUpdateResponse, CurrentBias, StandardAgentResponse,
+    HealthData
 )
 from .logic import run_learning_cycle
 from .market_regime import classify_market_regime
@@ -50,15 +51,19 @@ async def learn(request: LearningRequest, req: Request) -> StandardAgentResponse
         data=learning_result
     )
 
-@app.post("/market-regime", response_model=MarketRegimeResponse)
-async def market_regime(request: MarketRegimeRequest) -> MarketRegimeResponse:
+@app.post("/market-regime", response_model=StandardAgentResponse[MarketRegimeResponse])
+async def market_regime(request: MarketRegimeRequest) -> StandardAgentResponse[MarketRegimeResponse]:
     """
     Analyzes price history to determine the current market regime.
     """
-    return classify_market_regime(request.price_history)
+    result = classify_market_regime(request.price_history)
+    return StandardAgentResponse(
+        status="success",
+        data=result
+    )
 
-@app.post("/learning/update-biases", response_model=List[BiasUpdateResponse])
-async def update_biases(request: Union[List[BiasUpdateRequest], BiasUpdateRequest]) -> List[BiasUpdateResponse]:
+@app.post("/learning/update-biases", response_model=StandardAgentResponse[List[BiasUpdateResponse]])
+async def update_biases(request: Union[List[BiasUpdateRequest], BiasUpdateRequest]) -> StandardAgentResponse[List[BiasUpdateResponse]]:
     """
     Receives feedback from the Manager to update the agent's internal biases,
     and persists the new state to the database. Supports both single and batch updates.
@@ -103,15 +108,19 @@ async def update_biases(request: Union[List[BiasUpdateRequest], BiasUpdateReques
         # Consider adding more robust error handling or a retry mechanism here.
         # For now, we will allow the in-memory state to proceed and log the error.
 
-    return responses
-
-@app.get("/health", response_model=StandardAgentResponse)
-def health():
-    db_connected = check_db_connection()
     return StandardAgentResponse(
         status="success",
-        data={
-            "status": "healthy",
-            "database": "connected" if db_connected else "disconnected"
-        }
+        data=responses
+    )
+
+@app.get("/health", response_model=StandardAgentResponse[HealthData])
+def health():
+    db_connected = check_db_connection()
+    data = HealthData(
+        status="healthy",
+        database="connected" if db_connected else "disconnected"
+    )
+    return StandardAgentResponse(
+        status="success",
+        data=data
     )

@@ -1,6 +1,6 @@
 
 from pydantic import BaseModel, Field
-from typing import List, Dict, Optional, Any, Literal, Generic, TypeVar
+from typing import List, Dict, Optional, Any, Literal, Generic, TypeVar, Union
 from decimal import Decimal
 from datetime import datetime, UTC
 
@@ -10,10 +10,10 @@ T = TypeVar("T")
 
 class StandardAgentResponse(BaseModel, Generic[T]):
     """Standardized response format for all agents."""
-    status: str
+    status: Literal["success", "error"]
     agent_type: str = "learning"
     version: str = "1.0"
-    timestamp: str = Field(default_factory=lambda: datetime.now(UTC).isoformat().replace("+00:00", "Z"))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     data: Optional[T] = None
     error: Optional[Dict[str, Any]] = None
 
@@ -124,3 +124,11 @@ class MarketRegimeResponse(BaseModel):
     regime: str
     confidence_score: float = Field(..., ge=0.0, le=1.0)
     explanation: str
+
+# --- Health and Union Models ---
+
+class HealthData(BaseModel):
+    status: str
+    database: str
+
+LearningAgentResponseData = Union[LearningResponse, MarketRegimeResponse, List[BiasUpdateResponse], HealthData]
