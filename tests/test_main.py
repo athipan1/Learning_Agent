@@ -59,7 +59,7 @@ class TestMain(unittest.TestCase):
         response = self.client.post("/learning/update-biases", json=request_body)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data[0]["current_bias"]["bull_bias"], 0.1)
+        self.assertEqual(data["data"][0]["current_bias"]["bull_bias"], 0.1)
         self.assertEqual(mock_db_state["AAPL"]["bull_bias"], 0.1)
 
     def test_bias_clamping(self):
@@ -75,7 +75,7 @@ class TestMain(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertEqual(data[0]["current_bias"]["bull_bias"], 1.0)
+        self.assertEqual(data["data"][0]["current_bias"]["bull_bias"], 1.0)
         self.assertEqual(mock_db_state["NVDA"]["bull_bias"], 1.0)
 
     def _create_dummy_learning_request_body(self, trades):

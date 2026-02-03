@@ -14,9 +14,9 @@ if USE_SQLITE:
     DATABASE_URL = "sqlite:///./learning_agent.db"
     logging.info(f"Using SQLite database: {DATABASE_URL}")
 else:
-    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/learning_agent_db")
+    DATABASE_URL = os.getenv("DATABASE_URL")
 
-if not DATABASE_URL:
+if not USE_SQLITE and not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set and USE_SQLITE is false.")
 
 SQLALCHEMY_ECHO = os.getenv("SQLALCHEMY_ECHO", "False").lower() in ("true", "1", "t")
