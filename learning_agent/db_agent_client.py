@@ -1,7 +1,7 @@
 
 import os
 import httpx
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Union
 import logging
 from .models import Trade
 
@@ -11,17 +11,18 @@ if not DB_AGENT_BASE_URL:
     raise ValueError("DB_AGENT_URL environment variable is not set.")
 
 # --- API Client ---
-async def fetch_trade_history(asset_id: Optional[str] = None) -> List[Trade]:
+async def fetch_trade_history(account_id: Union[int, str], asset_id: Optional[str] = None) -> List[Trade]:
     """
     Fetches trade history from the Database Agent.
 
     Args:
+        account_id: The ID of the account to fetch history for.
         asset_id: If provided, fetches trades only for a specific asset.
 
     Returns:
         A list of Trade objects. Returns an empty list if the fetch fails.
     """
-    endpoint = f"{DB_AGENT_BASE_URL}/trades"
+    endpoint = f"{DB_AGENT_BASE_URL}/accounts/{account_id}/trade_history"
     params = {}
     if asset_id:
         params["asset_id"] = asset_id
