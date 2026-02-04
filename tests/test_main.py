@@ -81,6 +81,7 @@ class TestMain(unittest.TestCase):
     def _create_dummy_learning_request_body(self, trades):
         """Helper to create a valid request body from Trade models."""
         request = {
+            "account_id": "acc123",
             "learning_mode": "test", "window_size": 10, "trade_history": [], "price_history": {},
             "current_policy": {
                 "agent_weights": {},
@@ -101,7 +102,7 @@ class TestMain(unittest.TestCase):
         mock_fetch_history.return_value = []
 
         trades = [
-            Trade(trade_id=str(i), asset_id="BTC-USD", side="buy", entry_price=Decimal("50000"),
+            Trade(trade_id=str(i), account_id="acc123", asset_id="BTC-USD", side="buy", entry_price=Decimal("50000"),
                   exit_price=Decimal("51000"), quantity=Decimal("1"), executed_at="2026-01-08T09:00:00Z",
                   pnl_pct=Decimal("0.02")) for i in range(10)
         ]
@@ -112,7 +113,7 @@ class TestMain(unittest.TestCase):
         data = response.json()
         self.assertEqual(data["status"], "success")
         self.assertEqual(data["data"]["learning_state"], "success")
-        mock_fetch_history.assert_called_once_with(asset_id="BTC-USD")
+        mock_fetch_history.assert_called_once_with(account_id="acc123", asset_id="BTC-USD")
 
     @patch('learning_agent.logic.fetch_trade_history', new_callable=AsyncMock)
     def test_bias_integration_in_learn_endpoint(self, mock_fetch_history):
@@ -125,7 +126,7 @@ class TestMain(unittest.TestCase):
         mock_fetch_history.return_value = []
 
         trades = [
-            Trade(trade_id=str(i), asset_id="BTC-USD", side="buy", entry_price=Decimal("50000"),
+            Trade(trade_id=str(i), account_id="acc123", asset_id="BTC-USD", side="buy", entry_price=Decimal("50000"),
                   exit_price=Decimal("51000"), quantity=Decimal("1"), executed_at="2026-01-08T09:00:00Z",
                   pnl_pct=Decimal("0.02")) for i in range(10)
         ]

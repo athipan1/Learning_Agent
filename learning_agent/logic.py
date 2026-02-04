@@ -89,7 +89,7 @@ async def run_learning_cycle(request: LearningRequest, bias_state: Dict[str, Dic
 
     # Fetch historical trades for each asset and merge them
     for asset_id in asset_ids_in_request:
-        historical_trades = await fetch_trade_history(asset_id=asset_id)
+        historical_trades = await fetch_trade_history(account_id=request.account_id, asset_id=asset_id)
         for trade in historical_trades:
             if trade.trade_id not in all_trades:
                 all_trades[trade.trade_id] = trade

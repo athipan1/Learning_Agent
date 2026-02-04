@@ -26,7 +26,8 @@ class AgentVote(BaseModel):
 
 class Trade(BaseModel):
     """Represents a single, standardized historical trade."""
-    trade_id: str
+    trade_id: Union[int, str]
+    account_id: Union[int, str]
     asset_id: str
     side: Literal["buy", "sell"]
     entry_price: Decimal
@@ -59,6 +60,7 @@ class CurrentPolicy(BaseModel):
 
 class LearningRequest(BaseModel):
     """The complete input data structure for the /learn endpoint."""
+    account_id: Union[int, str]
     learning_mode: str
     window_size: int
     trade_history: List[Trade]
