@@ -30,11 +30,11 @@ class Trade(BaseModel):
     account_id: Union[int, str]
     asset_id: str
     side: Literal["buy", "sell"]
-    entry_price: Decimal
-    exit_price: Decimal
+    entry_price: Optional[Decimal] = Decimal("0")
+    exit_price: Optional[Decimal] = Decimal("0")
     quantity: Decimal
-    executed_at: str  # ISO-8601 timestamp
-    pnl_pct: Decimal
+    executed_at: Union[str, datetime]  # ISO-8601 timestamp or datetime object
+    pnl_pct: Optional[Decimal] = Decimal("0")
 
 class PricePoint(BaseModel):
     """Represents a single price point in history."""
