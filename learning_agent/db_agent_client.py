@@ -7,8 +7,6 @@ from .models import Trade
 
 # --- Configuration ---
 DB_AGENT_BASE_URL = os.getenv("DB_AGENT_URL")
-if not DB_AGENT_BASE_URL:
-    raise ValueError("DB_AGENT_URL environment variable is not set.")
 
 # --- API Client ---
 async def fetch_trade_history(account_id: Union[int, str], asset_id: Optional[str] = None) -> List[Trade]:
@@ -22,6 +20,10 @@ async def fetch_trade_history(account_id: Union[int, str], asset_id: Optional[st
     Returns:
         A list of Trade objects. Returns an empty list if the fetch fails.
     """
+    if not DB_AGENT_BASE_URL:
+        logging.error("DB_AGENT_URL environment variable is not set. Cannot fetch trade history.")
+        return []
+
     endpoint = f"{DB_AGENT_BASE_URL}/accounts/{account_id}/trade_history"
     params = {}
     if asset_id:

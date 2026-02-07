@@ -18,6 +18,7 @@ jobs:
           echo "POSTGRES_USER=user" >> .env
           echo "POSTGRES_PASSWORD=password" >> .env
           echo "POSTGRES_DB=trading_db_test" >> .env
+          echo "DB_AGENT_URL=http://db-agent:8001" >> .env
 
       - name: Run tests
         run: docker compose run --rm learning-agent-ci
