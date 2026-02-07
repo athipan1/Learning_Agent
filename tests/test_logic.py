@@ -49,20 +49,20 @@ class TestAssetAwareLearning(unittest.IsolatedAsyncioTestCase):
         self.assertAlmostEqual(perf["max_drawdown"], 0)
         self.assertEqual(perf["trade_count"], 10)
 
-    @patch('learning_agent.logic.fetch_trade_history', new_callable=AsyncMock)
-    async def test_warmup_phase(self, mock_fetch):
+    @patch('learning_agent.logic.get_historical_trades')
+    async def test_warmup_phase(self, mock_get_trades):
         """Test that assets with insufficient combined trades are in warmup."""
-        mock_fetch.side_effect = lambda account_id, asset_id, **kwargs: self.historical_trades.get(asset_id, [])
+        mock_get_trades.side_effect = lambda account_id, asset_id: self.historical_trades.get(asset_id, [])
 
         response = await run_learning_cycle(self.request, self.bias_state)
         # Total trades for C = 1 (request) + 4 (historical) = 5. Still in warmup.
         self.assertNotIn("C", response.policy_deltas.asset_biases)
         self.assertIn("Asset 'C' is in warmup", "".join(response.reasoning))
 
-    @patch('learning_agent.logic.fetch_trade_history', new_callable=AsyncMock)
-    async def test_asset_bias_with_merged_history(self, mock_fetch):
+    @patch('learning_agent.logic.get_historical_trades')
+    async def test_asset_bias_with_merged_history(self, mock_get_trades):
         """Test bias recommendations with merged request and historical data."""
-        mock_fetch.side_effect = lambda account_id, asset_id, **kwargs: self.historical_trades.get(asset_id, [])
+        mock_get_trades.side_effect = lambda account_id, asset_id: self.historical_trades.get(asset_id, [])
 
         response = await run_learning_cycle(self.request, self.bias_state)
         biases = response.policy_deltas.asset_biases
@@ -71,14 +71,14 @@ class TestAssetAwareLearning(unittest.IsolatedAsyncioTestCase):
         # Asset B has 10 total losing trades -> negative bias
         self.assertLess(biases.get("B", 0), 0)
 
-    @patch('learning_agent.logic.fetch_trade_history', new_callable=AsyncMock)
-    async def test_drawdown_clustering_consecutive_losses(self, mock_fetch):
+    @patch('learning_agent.logic.get_historical_trades')
+    async def test_drawdown_clustering_consecutive_losses(self, mock_get_trades):
         """Test risk adjustment from consecutive losses in combined history."""
         # Asset D has 10 consecutive losses, split between request and history
         historical_d = [Trade(trade_id=f"D{i}", account_id="acc123", asset_id="D", side="buy", quantity=Decimal("1"), entry_price=Decimal("100"), exit_price=Decimal("99"), executed_at=f"2024-01-1{i}T10:00:00Z", pnl_pct=Decimal("-0.01")) for i in range(9)]
         request_d = [Trade(trade_id="D9", account_id="acc123", asset_id="D", side="buy", quantity=Decimal("1"), entry_price=Decimal("100"), exit_price=Decimal("99"), executed_at="2024-01-19T10:00:00Z", pnl_pct=Decimal("-0.01"))]
 
-        mock_fetch.side_effect = lambda account_id, asset_id, **kwargs: historical_d if asset_id == "D" else []
+        mock_get_trades.side_effect = lambda account_id, asset_id: historical_d if asset_id == "D" else []
 
         request = self.request.model_copy(deep=True)
         request.trade_history = request_d
@@ -88,13 +88,13 @@ class TestAssetAwareLearning(unittest.IsolatedAsyncioTestCase):
         self.assertLess(response.policy_deltas.risk["risk_per_trade"], 0)
         self.assertTrue(any("consecutive losses" in r for r in response.reasoning))
 
-    @patch('learning_agent.logic.fetch_trade_history', new_callable=AsyncMock)
-    async def test_deduplication_of_trades(self, mock_fetch):
+    @patch('learning_agent.logic.get_historical_trades')
+    async def test_deduplication_of_trades(self, mock_get_trades):
         """Test that trades are correctly de-duplicated."""
         # A trade with the same ID exists in both request and historical data
         duplicate_trade = self.request_trades[0]
 
-        mock_fetch.return_value = [duplicate_trade] + self.historical_trades["A"]
+        mock_get_trades.return_value = [duplicate_trade] + self.historical_trades["A"]
 
         # We only care about Asset A for this test
         request = self.request.model_copy(deep=True)
@@ -112,10 +112,10 @@ class TestAssetAwareLearning(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("warmup", reasoning_line)
 
 
-    @patch('learning_agent.logic.fetch_trade_history', new_callable=AsyncMock)
-    async def test_empty_trade_history(self, mock_fetch):
+    @patch('learning_agent.logic.get_historical_trades')
+    async def test_empty_trade_history(self, mock_get_trades):
         """Test that the service handles empty history from both sources."""
-        mock_fetch.return_value = []
+        mock_get_trades.return_value = []
 
         request = self.request.model_copy(deep=True)
         request.trade_history = []

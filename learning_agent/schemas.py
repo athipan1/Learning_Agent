@@ -1,9 +1,25 @@
 
-from sqlalchemy import Column, String, Float, DateTime
+from sqlalchemy import Column, String, Float, DateTime, Integer, BigInteger, Numeric
 from sqlalchemy.orm import declarative_base
 from datetime import datetime
 
 Base = declarative_base()
+
+class Order(Base):
+    """
+    SQLAlchemy model for the 'orders' table, matching the Database Agent's schema.
+    Used for direct database access to trade history.
+    """
+    __tablename__ = 'orders'
+
+    order_id = Column(Integer, primary_key=True)
+    account_id = Column(Integer, nullable=False)
+    symbol = Column(String, nullable=False)
+    order_type = Column(String, nullable=False)
+    quantity = Column(BigInteger, nullable=False)
+    price = Column(Numeric(18, 5))
+    status = Column(String, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
 
 class BiasState(Base):
     """

@@ -1,9 +1,11 @@
 
 import os
+from datetime import datetime, timezone
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base
-from .schemas import Base, BiasState
-from typing import Dict
+from .schemas import Base, BiasState, Order
+from .models import Trade
+from typing import Dict, List, Optional, Union
 from collections import defaultdict
 import logging
 
@@ -41,6 +43,46 @@ def check_db_connection() -> bool:
     except Exception as e:
         logging.error(f"Database connection check failed: {e}")
         return False
+    finally:
+        db.close()
+
+def get_historical_trades(account_id: Union[int, str], asset_id: Optional[str] = None) -> List[Trade]:
+    """
+    Fetches executed trades directly from the PostgreSQL database.
+    This replaces the need for an external API call to the Database Agent for trade history.
+    """
+    db = SessionLocal()
+    try:
+        # PostgreSQL-compatible query to fetch executed orders for the given account
+        query = db.query(Order).filter(Order.account_id == int(account_id), Order.status == 'executed')
+
+        if asset_id:
+            query = query.filter(Order.symbol == asset_id)
+
+        # Order by timestamp descending to get the most recent trades first
+        db_orders = query.order_by(Order.timestamp.desc()).all()
+
+        trades = []
+        for order in db_orders:
+            # Map the database Order model to the Pydantic Trade model used by the logic.
+            # Field mapping: 'symbol' from DB becomes 'asset_id' in the model.
+            trades.append(Trade(
+                trade_id=str(order.order_id),
+                account_id=str(order.account_id),
+                asset_id=order.symbol,
+                side=order.order_type.lower(),
+                quantity=order.quantity,
+                entry_price=order.price,
+                exit_price=order.price, # The orders table doesn't distinguish entry/exit prices
+                executed_at=order.timestamp.isoformat() if order.timestamp else datetime.now(timezone.utc).isoformat(),
+                pnl_pct=0.0 # PnL percentage is not stored in the basic orders table
+            ))
+
+        logging.info(f"Directly fetched {len(trades)} trades from PostgreSQL for account {account_id}, asset {asset_id}.")
+        return trades
+    except Exception as e:
+        logging.error(f"Failed to fetch trades from PostgreSQL: {e}")
+        return []
     finally:
         db.close()
 

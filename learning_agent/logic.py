@@ -1,6 +1,6 @@
 
 from .models import LearningRequest, LearningResponse, PolicyDeltas, Trade, PricePoint
-from .db_agent_client import fetch_trade_history
+from .database import get_historical_trades
 from typing import List, Dict
 from decimal import Decimal
 import numpy as np
@@ -88,11 +88,14 @@ async def run_learning_cycle(request: LearningRequest, bias_state: Dict[str, Dic
         all_trades[trade.trade_id] = trade
 
     # Fetch historical trades for each asset and merge them
+    import anyio
     for asset_id in asset_ids_in_request:
-        historical_trades = await fetch_trade_history(
-            account_id=request.account_id,
-            asset_id=asset_id,
-            correlation_id=correlation_id
+        # Direct database connection for better performance and reliability.
+        # Using anyio.to_thread.run_sync to prevent blocking the async event loop with synchronous DB calls.
+        historical_trades = await anyio.to_thread.run_sync(
+            get_historical_trades,
+            request.account_id,
+            asset_id
         )
         for trade in historical_trades:
             if trade.trade_id not in all_trades:

@@ -97,9 +97,9 @@ class TestMain(unittest.TestCase):
             request["trade_history"].append(trade_dict)
         return request
 
-    @patch('learning_agent.logic.fetch_trade_history', new_callable=AsyncMock)
-    def test_learn_endpoint_with_mocks(self, mock_fetch_history):
-        mock_fetch_history.return_value = []
+    @patch('learning_agent.logic.get_historical_trades')
+    def test_learn_endpoint_with_mocks(self, mock_get_trades):
+        mock_get_trades.return_value = []
 
         trades = [
             Trade(trade_id=str(i), account_id="acc123", asset_id="BTC-USD", side="buy", entry_price=Decimal("50000"),
@@ -113,17 +113,17 @@ class TestMain(unittest.TestCase):
         data = response.json()
         self.assertEqual(data["status"], "success")
         self.assertEqual(data["data"]["learning_state"], "success")
-        mock_fetch_history.assert_called_once_with(account_id="acc123", asset_id="BTC-USD", correlation_id=None)
+        mock_get_trades.assert_called_once_with("acc123", "BTC-USD")
 
-    @patch('learning_agent.logic.fetch_trade_history', new_callable=AsyncMock)
-    def test_bias_integration_in_learn_endpoint(self, mock_fetch_history):
+    @patch('learning_agent.logic.get_historical_trades')
+    def test_bias_integration_in_learn_endpoint(self, mock_get_trades):
         # Setup: Give BTC-USD a strong positive bull_bias using the endpoint
         update_request = self._get_base_bias_update_request("BTC-USD", {"bull_bias": 0.5})
         response = self.client.post("/learning/update-biases", json=update_request)
         self.assertEqual(response.status_code, 200) # Ensure the update was successful
         self.assertEqual(mock_db_state["BTC-USD"]["bull_bias"], 0.5)
 
-        mock_fetch_history.return_value = []
+        mock_get_trades.return_value = []
 
         trades = [
             Trade(trade_id=str(i), account_id="acc123", asset_id="BTC-USD", side="buy", entry_price=Decimal("50000"),
