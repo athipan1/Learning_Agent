@@ -52,7 +52,7 @@ class TestAssetAwareLearning(unittest.IsolatedAsyncioTestCase):
     @patch('learning_agent.logic.fetch_trade_history', new_callable=AsyncMock)
     async def test_warmup_phase(self, mock_fetch):
         """Test that assets with insufficient combined trades are in warmup."""
-        mock_fetch.side_effect = lambda account_id, asset_id: self.historical_trades.get(asset_id, [])
+        mock_fetch.side_effect = lambda account_id, asset_id, **kwargs: self.historical_trades.get(asset_id, [])
 
         response = await run_learning_cycle(self.request, self.bias_state)
         # Total trades for C = 1 (request) + 4 (historical) = 5. Still in warmup.
@@ -62,7 +62,7 @@ class TestAssetAwareLearning(unittest.IsolatedAsyncioTestCase):
     @patch('learning_agent.logic.fetch_trade_history', new_callable=AsyncMock)
     async def test_asset_bias_with_merged_history(self, mock_fetch):
         """Test bias recommendations with merged request and historical data."""
-        mock_fetch.side_effect = lambda account_id, asset_id: self.historical_trades.get(asset_id, [])
+        mock_fetch.side_effect = lambda account_id, asset_id, **kwargs: self.historical_trades.get(asset_id, [])
 
         response = await run_learning_cycle(self.request, self.bias_state)
         biases = response.policy_deltas.asset_biases
@@ -78,7 +78,7 @@ class TestAssetAwareLearning(unittest.IsolatedAsyncioTestCase):
         historical_d = [Trade(trade_id=f"D{i}", account_id="acc123", asset_id="D", side="buy", quantity=Decimal("1"), entry_price=Decimal("100"), exit_price=Decimal("99"), executed_at=f"2024-01-1{i}T10:00:00Z", pnl_pct=Decimal("-0.01")) for i in range(9)]
         request_d = [Trade(trade_id="D9", account_id="acc123", asset_id="D", side="buy", quantity=Decimal("1"), entry_price=Decimal("100"), exit_price=Decimal("99"), executed_at="2024-01-19T10:00:00Z", pnl_pct=Decimal("-0.01"))]
 
-        mock_fetch.side_effect = lambda account_id, asset_id: historical_d if asset_id == "D" else []
+        mock_fetch.side_effect = lambda account_id, asset_id, **kwargs: historical_d if asset_id == "D" else []
 
         request = self.request.model_copy(deep=True)
         request.trade_history = request_d

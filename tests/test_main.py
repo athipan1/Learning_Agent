@@ -113,7 +113,7 @@ class TestMain(unittest.TestCase):
         data = response.json()
         self.assertEqual(data["status"], "success")
         self.assertEqual(data["data"]["learning_state"], "success")
-        mock_fetch_history.assert_called_once_with(account_id="acc123", asset_id="BTC-USD")
+        mock_fetch_history.assert_called_once_with(account_id="acc123", asset_id="BTC-USD", correlation_id=None)
 
     @patch('learning_agent.logic.fetch_trade_history', new_callable=AsyncMock)
     def test_bias_integration_in_learn_endpoint(self, mock_fetch_history):
