@@ -36,7 +36,8 @@ RUN addgroup --system app && adduser --system --group app
 # Set environment variables
 ENV HOME=/home/app \
     APP_HOME=/home/app/web \
-    NUMBA_CACHE_DIR="/tmp/numba_cache"
+    NUMBA_CACHE_DIR="/tmp/numba_cache" \
+    PORT=8005
 
 RUN mkdir -p $APP_HOME
 WORKDIR $APP_HOME
@@ -56,7 +57,6 @@ RUN chown -R app:app $APP_HOME
 # Switch to the non-root user
 USER app
 
-EXPOSE 8004
+EXPOSE 8005
 
-CMD ["uvicorn", "learning_agent.main:app", "--host", "0.0.0.0", "--port", "8004"]
-
+CMD ["uvicorn", "learning_agent.main:app", "--host", "0.0.0.0", "--port", "8005"]
