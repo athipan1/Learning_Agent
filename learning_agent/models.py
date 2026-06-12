@@ -12,7 +12,7 @@ class StandardAgentResponse(BaseModel, Generic[T]):
     """Standardized response format for all agents."""
     status: Literal["success", "error"]
     agent_type: str = "learning"
-    version: str = "1.0"
+    version: str = "1.0.0"
     timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     data: Optional[T] = None
     error: Optional[Dict[str, Any]] = None
@@ -51,20 +51,20 @@ class CurrentPolicyRisk(BaseModel):
     stop_loss_pct: float
 
 class CurrentPolicyStrategyBias(BaseModel):
-    preferred_regime: str
+    preferred_regime: str = "neutral"
 
 class CurrentPolicy(BaseModel):
     agent_weights: Dict[str, float]
     risk: CurrentPolicyRisk
-    strategy_bias: CurrentPolicyStrategyBias
+    strategy_bias: CurrentPolicyStrategyBias = Field(default_factory=CurrentPolicyStrategyBias)
 
 class LearningRequest(BaseModel):
     """The complete input data structure for the /learn endpoint."""
     account_id: Union[int, str]
     learning_mode: str
     window_size: int
-    trade_history: List[Trade]
-    price_history: Dict[str, List[PricePoint]]
+    trade_history: List[Trade] = Field(default_factory=list)
+    price_history: Dict[str, List[PricePoint]] = Field(default_factory=dict)
     current_policy: CurrentPolicy
     execution_result: Optional[dict] = None
 
@@ -118,7 +118,7 @@ class BiasUpdateResponse(BaseModel):
 
 class MarketRegimeRequest(BaseModel):
     """The input data structure for the /market-regime endpoint."""
-    price_history: List[PricePoint] = Field(..., min_length=200)
+    price_history: List[PricePoint] = Field(..., min_length=1)
 
 
 class MarketRegimeResponse(BaseModel):
