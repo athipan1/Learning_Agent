@@ -37,6 +37,8 @@ RUN addgroup --system app && adduser --system --group app
 ENV HOME=/home/app \
     APP_HOME=/home/app/web \
     NUMBA_CACHE_DIR="/tmp/numba_cache" \
+    USE_SQLITE="true" \
+    LEARNING_DEV_MODE="true" \
     PORT=8005
 
 RUN mkdir -p $APP_HOME
