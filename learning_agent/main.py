@@ -115,10 +115,16 @@ async def update_biases(request: Union[List[BiasUpdateRequest], BiasUpdateReques
 
 @app.get("/health", response_model=StandardAgentResponse[HealthData])
 def health():
-    db_connected = check_db_connection()
+    try:
+        db_connected = check_db_connection()
+        database_status = "connected" if db_connected else "disconnected"
+    except Exception as e:
+        logging.warning(f"Health check database error: {e}")
+        database_status = "disconnected"
+
     data = HealthData(
         status="healthy",
-        database="connected" if db_connected else "disconnected"
+        database=database_status
     )
     return StandardAgentResponse(
         status="success",
