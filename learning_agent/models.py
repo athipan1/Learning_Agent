@@ -68,6 +68,26 @@ class LearningRequest(BaseModel):
     current_policy: CurrentPolicy
     execution_result: Optional[dict] = None
 
+class PortfolioAuditRecord(BaseModel):
+    portfolio_audit_id: Optional[str] = None
+    account_id: Union[int, str]
+    correlation_id: Optional[str] = None
+    policy_name: Optional[str] = None
+    mode: str = "portfolio_allocation"
+    status: str = "created"
+    allocation_plan: Dict[str, Any] = Field(default_factory=dict)
+    portfolio_snapshot: Dict[str, Any] = Field(default_factory=dict)
+    selected_positions: List[Dict[str, Any]] = Field(default_factory=list)
+    risk_approvals: List[Dict[str, Any]] = Field(default_factory=list)
+    execution_orders: List[Dict[str, Any]] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+class PortfolioLearningRequest(BaseModel):
+    account_id: Union[int, str]
+    learning_mode: str = "portfolio_bucket_review"
+    portfolio_audits: List[PortfolioAuditRecord] = Field(default_factory=list)
+    current_policy: Optional[Dict[str, Any]] = None
+
 # --- Output Contract Models ---
 
 class PolicyDeltas(BaseModel):
@@ -84,6 +104,17 @@ class LearningResponse(BaseModel):
     learning_mode: Optional[str] = None
     confidence_score: float = 0.0
     policy_deltas: PolicyDeltas = Field(default_factory=PolicyDeltas)
+    reasoning: List[str] = Field(default_factory=list)
+
+class PortfolioLearningResponse(BaseModel):
+    learning_state: str
+    learning_mode: str = "portfolio_bucket_review"
+    confidence_score: float = 0.0
+    portfolio_count: int = 0
+    approval_rate: float = 0.0
+    execution_rate: float = 0.0
+    bucket_metrics: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    policy_deltas: Dict[str, Any] = Field(default_factory=dict)
     reasoning: List[str] = Field(default_factory=list)
 
 # --- Bias Update Models ---
@@ -133,4 +164,4 @@ class HealthData(BaseModel):
     status: str
     database: str
 
-LearningAgentResponseData = Union[LearningResponse, MarketRegimeResponse, List[BiasUpdateResponse], HealthData]
+LearningAgentResponseData = Union[LearningResponse, PortfolioLearningResponse, MarketRegimeResponse, List[BiasUpdateResponse], HealthData]
