@@ -3,10 +3,11 @@ from fastapi import FastAPI, Request
 from .models import (
     LearningRequest, LearningResponse, MarketRegimeRequest, MarketRegimeResponse,
     BiasUpdateRequest, BiasUpdateResponse, CurrentBias, StandardAgentResponse,
-    HealthData
+    HealthData, PortfolioLearningRequest, PortfolioLearningResponse
 )
 from .logic import run_learning_cycle
 from .market_regime import classify_market_regime
+from .portfolio_learning import analyze_portfolio_audits
 from .database import init_db, load_bias_state, save_bias_state, check_db_connection
 from typing import Dict, List, Union
 from collections import defaultdict
@@ -49,6 +50,24 @@ async def learn(request: LearningRequest, req: Request) -> StandardAgentResponse
     return StandardAgentResponse(
         status="success",
         data=learning_result
+    )
+
+@app.post("/learn/portfolio", response_model=StandardAgentResponse[PortfolioLearningResponse])
+async def learn_portfolio(request: PortfolioLearningRequest, req: Request) -> StandardAgentResponse[PortfolioLearningResponse]:
+    """
+    Learns from Database_Agent portfolio audit trails and recommends bucket-level
+    allocation/risk adjustments for the core-satellite portfolio.
+    """
+    correlation_id = req.headers.get("X-Correlation-ID")
+    audit_payloads = [audit.model_dump(mode="json") for audit in request.portfolio_audits]
+    result = analyze_portfolio_audits(audit_payloads)
+    result["learning_mode"] = request.learning_mode
+    logging.info(
+        f"[correlation_id={correlation_id}] portfolio learning reviewed {result.get('portfolio_count', 0)} audit(s)"
+    )
+    return StandardAgentResponse(
+        status="success",
+        data=PortfolioLearningResponse(**result)
     )
 
 @app.post("/market-regime", response_model=StandardAgentResponse[MarketRegimeResponse])
