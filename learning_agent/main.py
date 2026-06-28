@@ -3,11 +3,13 @@ from fastapi import FastAPI, Request
 from .models import (
     LearningRequest, LearningResponse, MarketRegimeRequest, MarketRegimeResponse,
     BiasUpdateRequest, BiasUpdateResponse, CurrentBias, StandardAgentResponse,
-    HealthData, PortfolioLearningRequest, PortfolioLearningResponse
+    HealthData, PortfolioLearningRequest, PortfolioLearningResponse,
+    PerformanceLearningRequest, PerformanceLearningResponse
 )
 from .logic import run_learning_cycle
 from .market_regime import classify_market_regime
 from .portfolio_learning import analyze_portfolio_audits
+from .performance_learning import analyze_performance_summary
 from .database import init_db, load_bias_state, save_bias_state, check_db_connection
 from typing import Dict, List, Union
 from collections import defaultdict
@@ -20,7 +22,7 @@ BIAS_STATE: Dict[str, Dict[str, float]] = {}
 app = FastAPI(
     title="Macro Learning Agent",
     description="An analytical AI responsible for strategic, long-horizon learning in an automated trading system.",
-    version="1.0.0"
+    version="1.1.0"
 )
 
 @app.on_event("startup")
@@ -68,6 +70,22 @@ async def learn_portfolio(request: PortfolioLearningRequest, req: Request) -> St
     return StandardAgentResponse(
         status="success",
         data=PortfolioLearningResponse(**result)
+    )
+
+@app.post("/learn/performance", response_model=StandardAgentResponse[PerformanceLearningResponse])
+async def learn_performance(request: PerformanceLearningRequest, req: Request) -> StandardAgentResponse[PerformanceLearningResponse]:
+    """
+    Learns from Performance_Agent TradePlan summaries and recommends guarded
+    strategy-bucket, symbol-bias, and risk policy deltas.
+    """
+    correlation_id = req.headers.get("X-Correlation-ID")
+    result = analyze_performance_summary(request)
+    logging.info(
+        f"[correlation_id={correlation_id}] performance learning reviewed {result.reviewed_closed_plans} closed TradePlan(s)"
+    )
+    return StandardAgentResponse(
+        status="success",
+        data=result
     )
 
 @app.post("/market-regime", response_model=StandardAgentResponse[MarketRegimeResponse])

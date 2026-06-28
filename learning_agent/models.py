@@ -88,6 +88,49 @@ class PortfolioLearningRequest(BaseModel):
     portfolio_audits: List[PortfolioAuditRecord] = Field(default_factory=list)
     current_policy: Optional[Dict[str, Any]] = None
 
+
+class PerformanceGroupMetric(BaseModel):
+    trade_plan_count: int = 0
+    closed_plan_count: int = 0
+    win_rate: float = 0.0
+    gross_profit: float = 0.0
+    gross_loss: float = 0.0
+    net_pnl: float = 0.0
+    expectancy: float = 0.0
+    profit_factor: Optional[float] = None
+
+
+class PerformanceSummaryPayload(BaseModel):
+    period: str = "all"
+    trade_plan_count: int = 0
+    closed_plan_count: int = 0
+    open_plan_count: int = 0
+    winning_plans: int = 0
+    losing_plans: int = 0
+    win_rate: float = 0.0
+    gross_profit: float = 0.0
+    gross_loss: float = 0.0
+    net_pnl: float = 0.0
+    return_pct: float = 0.0
+    expectancy: float = 0.0
+    profit_factor: Optional[float] = None
+    average_win: float = 0.0
+    average_loss: float = 0.0
+    best_strategy_bucket: Optional[str] = None
+    worst_strategy_bucket: Optional[str] = None
+    by_strategy_bucket: Dict[str, PerformanceGroupMetric] = Field(default_factory=dict)
+    by_symbol: Dict[str, PerformanceGroupMetric] = Field(default_factory=dict)
+    plan_results: List[Dict[str, Any]] = Field(default_factory=list)
+    warnings: List[str] = Field(default_factory=list)
+
+
+class PerformanceLearningRequest(BaseModel):
+    account_id: Union[int, str]
+    learning_mode: str = "performance_summary_review"
+    performance_summary: PerformanceSummaryPayload
+    current_policy: Optional[Dict[str, Any]] = None
+    min_closed_plans: int = Field(default=5, ge=1)
+
 # --- Output Contract Models ---
 
 class PolicyDeltas(BaseModel):
@@ -114,6 +157,18 @@ class PortfolioLearningResponse(BaseModel):
     approval_rate: float = 0.0
     execution_rate: float = 0.0
     bucket_metrics: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    policy_deltas: Dict[str, Any] = Field(default_factory=dict)
+    reasoning: List[str] = Field(default_factory=list)
+
+
+class PerformanceLearningResponse(BaseModel):
+    learning_state: str
+    learning_mode: str = "performance_summary_review"
+    confidence_score: float = 0.0
+    reviewed_closed_plans: int = 0
+    performance_score: float = 0.0
+    bucket_metrics: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    symbol_metrics: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
     policy_deltas: Dict[str, Any] = Field(default_factory=dict)
     reasoning: List[str] = Field(default_factory=list)
 
@@ -164,4 +219,4 @@ class HealthData(BaseModel):
     status: str
     database: str
 
-LearningAgentResponseData = Union[LearningResponse, PortfolioLearningResponse, MarketRegimeResponse, List[BiasUpdateResponse], HealthData]
+LearningAgentResponseData = Union[LearningResponse, PortfolioLearningResponse, PerformanceLearningResponse, MarketRegimeResponse, List[BiasUpdateResponse], HealthData]
