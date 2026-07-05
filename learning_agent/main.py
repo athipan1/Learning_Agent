@@ -1,19 +1,30 @@
+from collections import defaultdict
+from typing import Dict, List, Union
+import logging
 
 from fastapi import FastAPI, Request
-from .models import (
-    LearningRequest, LearningResponse, MarketRegimeRequest, MarketRegimeResponse,
-    BiasUpdateRequest, BiasUpdateResponse, CurrentBias, StandardAgentResponse,
-    HealthData, PortfolioLearningRequest, PortfolioLearningResponse,
-    PerformanceLearningRequest, PerformanceLearningResponse
-)
+
+from .database import init_db, load_bias_state, save_bias_state, check_db_connection
 from .logic import run_learning_cycle
 from .market_regime import classify_market_regime
-from .portfolio_learning import analyze_portfolio_audits
+from .models import (
+    BiasUpdateRequest,
+    BiasUpdateResponse,
+    CurrentBias,
+    HealthData,
+    LearningRequest,
+    LearningResponse,
+    MarketRegimeRequest,
+    MarketRegimeResponse,
+    PerformanceLearningRequest,
+    PerformanceLearningResponse,
+    PortfolioLearningRequest,
+    PortfolioLearningResponse,
+    StandardAgentResponse,
+)
 from .performance_learning import analyze_performance_summary
-from .database import init_db, load_bias_state, save_bias_state, check_db_connection
-from typing import Dict, List, Union
-from collections import defaultdict
-import logging
+from .portfolio_learning import analyze_portfolio_audits
+from .system_contract import router as system_contract_router
 
 # --- Global State ---
 # This will be populated from the database on startup.
@@ -24,6 +35,8 @@ app = FastAPI(
     description="An analytical AI responsible for strategic, long-horizon learning in an automated trading system.",
     version="1.1.0"
 )
+app.include_router(system_contract_router)
+
 
 @app.on_event("startup")
 def on_startup():
@@ -40,6 +53,7 @@ def on_startup():
         # If loading fails, start with a fresh defaultdict to ensure the app can still run.
         BIAS_STATE = defaultdict(lambda: {"bull_bias": 0.0, "bear_bias": 0.0, "vol_bias": 0.0})
 
+
 @app.post("/learn", response_model=StandardAgentResponse[LearningResponse])
 async def learn(request: LearningRequest, req: Request) -> StandardAgentResponse[LearningResponse]:
     """
@@ -53,6 +67,7 @@ async def learn(request: LearningRequest, req: Request) -> StandardAgentResponse
         status="success",
         data=learning_result
     )
+
 
 @app.post("/learn/portfolio", response_model=StandardAgentResponse[PortfolioLearningResponse])
 async def learn_portfolio(request: PortfolioLearningRequest, req: Request) -> StandardAgentResponse[PortfolioLearningResponse]:
@@ -72,8 +87,12 @@ async def learn_portfolio(request: PortfolioLearningRequest, req: Request) -> St
         data=PortfolioLearningResponse(**result)
     )
 
+
 @app.post("/learn/performance", response_model=StandardAgentResponse[PerformanceLearningResponse])
-async def learn_performance(request: PerformanceLearningRequest, req: Request) -> StandardAgentResponse[PerformanceLearningResponse]:
+async def learn_performance(
+    request: PerformanceLearningRequest,
+    req: Request,
+) -> StandardAgentResponse[PerformanceLearningResponse]:
     """
     Learns from Performance_Agent TradePlan summaries and recommends guarded
     strategy-bucket, symbol-bias, and risk policy deltas.
@@ -88,6 +107,7 @@ async def learn_performance(request: PerformanceLearningRequest, req: Request) -
         data=result
     )
 
+
 @app.post("/market-regime", response_model=StandardAgentResponse[MarketRegimeResponse])
 async def market_regime(request: MarketRegimeRequest) -> StandardAgentResponse[MarketRegimeResponse]:
     """
@@ -98,6 +118,7 @@ async def market_regime(request: MarketRegimeRequest) -> StandardAgentResponse[M
         status="success",
         data=result
     )
+
 
 @app.post("/learning/update-biases", response_model=StandardAgentResponse[List[BiasUpdateResponse]])
 async def update_biases(request: Union[List[BiasUpdateRequest], BiasUpdateRequest]) -> StandardAgentResponse[List[BiasUpdateResponse]]:
@@ -149,6 +170,7 @@ async def update_biases(request: Union[List[BiasUpdateRequest], BiasUpdateReques
         status="success",
         data=responses
     )
+
 
 @app.get("/health", response_model=StandardAgentResponse[HealthData])
 def health():
