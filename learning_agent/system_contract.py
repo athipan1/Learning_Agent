@@ -5,10 +5,14 @@ from typing import Any, Dict
 
 from fastapi import APIRouter
 
+from .models import (
+    LEARNING_AGENT_VERSION,
+    LEARNING_OUTCOME_VERSION,
+    LEARNING_SERVICE_VERSION,
+    SCHEMA_VERSION,
+)
+
 LEARNING_AGENT_TYPE = "learning"
-LEARNING_AGENT_VERSION = "1.0.0"
-LEARNING_SERVICE_VERSION = "1.1.0"
-SCHEMA_VERSION = "1.0"
 
 router = APIRouter()
 
@@ -49,9 +53,11 @@ def version() -> Dict[str, Any]:
             "service_version": LEARNING_SERVICE_VERSION,
             "schema_version": SCHEMA_VERSION,
             "api_contract": "multi-agent-trading-api-contract",
+            "outcome_contract_version": LEARNING_OUTCOME_VERSION,
         },
         metadata={
             "required_operational_endpoints": ["/health", "/ready", "/version"],
+            "learning_policy": "human-review-only",
         },
     )
 
@@ -65,9 +71,13 @@ def ready() -> Dict[str, Any]:
             "learn_endpoint": "/learn",
             "portfolio_learning_endpoint": "/learn/portfolio",
             "performance_learning_endpoint": "/learn/performance",
+            "outcome_learning_endpoint": "/learn/outcomes",
             "market_regime_endpoint": "/market-regime",
             "bias_update_endpoint": "/learning/update-biases",
             "persistence": "database-backed-bias-state",
+            "outcome_contract_version": LEARNING_OUTCOME_VERSION,
+            "auto_apply": False,
+            "requires_human_review": True,
         },
         metadata={
             "contract_source": "learning-agent-runtime-contract",
