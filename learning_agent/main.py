@@ -12,6 +12,10 @@ from .models import (
     BiasUpdateResponse,
     CurrentBias,
     HealthData,
+    LEARNING_OUTCOME_VERSION,
+    LEARNING_SERVICE_VERSION,
+    LearningOutcomeRequest,
+    LearningOutcomeResponse,
     LearningRequest,
     LearningResponse,
     MarketRegimeRequest,
@@ -22,12 +26,11 @@ from .models import (
     PortfolioLearningResponse,
     StandardAgentResponse,
 )
+from .outcome_learning import analyze_learning_outcomes
 from .performance_learning import analyze_performance_summary
 from .portfolio_learning import analyze_portfolio_audits
 from .system_contract import router as system_contract_router
 
-# --- Global State ---
-# This will be populated from the database on startup.
 BIAS_STATE: Dict[str, Dict[str, float]] = {}
 
 app = FastAPI(
@@ -36,27 +39,24 @@ app = FastAPI(
         "An analytical AI responsible for strategic, long-horizon learning "
         "in an automated trading system."
     ),
-    version="1.1.0",
+    version=LEARNING_SERVICE_VERSION,
 )
 app.include_router(system_contract_router)
 
 
 @app.on_event("startup")
 def on_startup():
-    """
-    Initialize the database and load the initial BIAS_STATE on application startup.
-    """
+    """Initialize the database and load the persisted bias state."""
     global BIAS_STATE
     try:
         init_db()
         BIAS_STATE = load_bias_state()
         logging.info("Successfully initialized and loaded bias state.")
-    except Exception as e:
+    except Exception as exc:
         logging.critical(
             "CRITICAL: Failed to initialize database or load state on startup: %s",
-            e,
+            exc,
         )
-        # If loading fails, start with a fresh defaultdict so the app can still run.
         BIAS_STATE = defaultdict(
             lambda: {"bull_bias": 0.0, "bear_bias": 0.0, "vol_bias": 0.0}
         )
@@ -67,29 +67,27 @@ async def learn(
     request: LearningRequest,
     req: Request,
 ) -> StandardAgentResponse[LearningResponse]:
-    """
-    Analyzes trade history and portfolio metrics to generate incremental
-    policy adjustments.
-    """
     correlation_id = req.headers.get("X-Correlation-ID")
-    # The learning cycle now uses the globally loaded and persisted BIAS_STATE.
     learning_result = await run_learning_cycle(
         request,
         BIAS_STATE,
         correlation_id=correlation_id,
     )
-    return StandardAgentResponse(status="success", data=learning_result)
+    return StandardAgentResponse(
+        status="success",
+        data=learning_result,
+        correlation_id=correlation_id,
+    )
 
 
-@app.post("/learn/portfolio", response_model=StandardAgentResponse[PortfolioLearningResponse])
+@app.post(
+    "/learn/portfolio",
+    response_model=StandardAgentResponse[PortfolioLearningResponse],
+)
 async def learn_portfolio(
     request: PortfolioLearningRequest,
     req: Request,
 ) -> StandardAgentResponse[PortfolioLearningResponse]:
-    """
-    Learns from Database_Agent portfolio audit trails and recommends bucket-level
-    allocation/risk adjustments for the core-satellite portfolio.
-    """
     correlation_id = req.headers.get("X-Correlation-ID")
     audit_payloads = [
         audit.model_dump(mode="json") for audit in request.portfolio_audits
@@ -104,18 +102,18 @@ async def learn_portfolio(
     return StandardAgentResponse(
         status="success",
         data=PortfolioLearningResponse(**result),
+        correlation_id=correlation_id,
     )
 
 
-@app.post("/learn/performance", response_model=StandardAgentResponse[PerformanceLearningResponse])
+@app.post(
+    "/learn/performance",
+    response_model=StandardAgentResponse[PerformanceLearningResponse],
+)
 async def learn_performance(
     request: PerformanceLearningRequest,
     req: Request,
 ) -> StandardAgentResponse[PerformanceLearningResponse]:
-    """
-    Learns from Performance_Agent TradePlan summaries and recommends guarded
-    strategy-bucket, symbol-bias, and risk policy deltas.
-    """
     correlation_id = req.headers.get("X-Correlation-ID")
     result = analyze_performance_summary(request)
     logging.info(
@@ -123,34 +121,66 @@ async def learn_performance(
         correlation_id,
         result.reviewed_closed_plans,
     )
-    return StandardAgentResponse(status="success", data=result)
+    return StandardAgentResponse(
+        status="success",
+        data=result,
+        correlation_id=correlation_id,
+    )
 
 
-@app.post("/market-regime", response_model=StandardAgentResponse[MarketRegimeResponse])
+@app.post(
+    "/learn/outcomes",
+    response_model=StandardAgentResponse[LearningOutcomeResponse],
+)
+async def learn_outcomes(
+    request: LearningOutcomeRequest,
+    req: Request,
+) -> StandardAgentResponse[LearningOutcomeResponse]:
+    """Review closed realized outcomes with versioned evidence attribution."""
+    correlation_id = req.headers.get("X-Correlation-ID")
+    result = analyze_learning_outcomes(request)
+    logging.info(
+        "[correlation_id=%s] outcome learning accepted=%s rejected=%s",
+        correlation_id,
+        result.accepted_outcomes,
+        result.rejected_outcomes,
+    )
+    return StandardAgentResponse(
+        status="success",
+        data=result,
+        correlation_id=correlation_id,
+        confidence_score=result.confidence_score,
+        metadata={
+            "outcome_contract_version": LEARNING_OUTCOME_VERSION,
+            "requires_human_review": True,
+            "auto_apply": False,
+        },
+    )
+
+
+@app.post(
+    "/market-regime",
+    response_model=StandardAgentResponse[MarketRegimeResponse],
+)
 async def market_regime(
     request: MarketRegimeRequest,
 ) -> StandardAgentResponse[MarketRegimeResponse]:
-    """
-    Analyzes price history to determine the current market regime.
-    """
     result = classify_market_regime(request.price_history)
     return StandardAgentResponse(status="success", data=result)
 
 
-@app.post("/learning/update-biases", response_model=StandardAgentResponse[List[BiasUpdateResponse]])
+@app.post(
+    "/learning/update-biases",
+    response_model=StandardAgentResponse[List[BiasUpdateResponse]],
+)
 async def update_biases(
     request: Union[List[BiasUpdateRequest], BiasUpdateRequest],
 ) -> StandardAgentResponse[List[BiasUpdateResponse]]:
-    """
-    Receives feedback from the Manager to update the agent's internal biases,
-    and persists the new state to the database. Supports both single and batch updates.
-    """
     updates = request if isinstance(request, list) else [request]
     responses = []
 
     for update in updates:
         asset_id = update.asset_id
-        # Safely handle new assets by checking existence first.
         if asset_id not in BIAS_STATE:
             BIAS_STATE[asset_id] = {
                 "bull_bias": 0.0,
@@ -158,11 +188,9 @@ async def update_biases(
                 "vol_bias": 0.0,
             }
         current_asset_bias = BIAS_STATE[asset_id]
-
         current_asset_bias["bull_bias"] += update.bias_delta.bull_bias
         current_asset_bias["bear_bias"] += update.bias_delta.bear_bias
         current_asset_bias["vol_bias"] += update.bias_delta.vol_bias
-
         current_asset_bias["bull_bias"] = max(
             -1.0,
             min(1.0, current_asset_bias["bull_bias"]),
@@ -175,19 +203,19 @@ async def update_biases(
             -1.0,
             min(1.0, current_asset_bias["vol_bias"]),
         )
-
-        response = BiasUpdateResponse(
-            asset_id=asset_id,
-            current_bias=CurrentBias(**current_asset_bias),
-            updated=True,
+        responses.append(
+            BiasUpdateResponse(
+                asset_id=asset_id,
+                current_bias=CurrentBias(**current_asset_bias),
+                updated=True,
+            )
         )
-        responses.append(response)
 
     try:
         save_bias_state(dict(BIAS_STATE))
         logging.info("Persisted updated bias state for %s asset(s).", len(updates))
-    except Exception as e:
-        logging.error("Failed to persist bias state after update: %s", e)
+    except Exception as exc:
+        logging.error("Failed to persist bias state after update: %s", exc)
 
     return StandardAgentResponse(status="success", data=responses)
 
@@ -197,9 +225,13 @@ def health():
     try:
         db_connected = check_db_connection()
         database_status = "connected" if db_connected else "disconnected"
-    except Exception as e:
-        logging.warning("Health check database error: %s", e)
+    except Exception as exc:
+        logging.warning("Health check database error: %s", exc)
         database_status = "disconnected"
 
-    data = HealthData(status="healthy", database=database_status)
+    data = HealthData(
+        status="healthy",
+        database=database_status,
+        outcome_contract_version=LEARNING_OUTCOME_VERSION,
+    )
     return StandardAgentResponse(status="success", data=data)
