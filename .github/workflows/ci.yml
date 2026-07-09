@@ -27,7 +27,25 @@ jobs:
         run: docker compose config --quiet
 
       - name: Run full test suite
-        run: docker compose run --rm learning-agent-ci pytest -q --tb=short
+        id: pytest
+        continue-on-error: true
+        run: |
+          docker compose run --rm learning-agent-ci \
+            pytest -q --tb=short > pytest-results.txt 2>&1
+
+      - name: Upload pytest results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: learning-pytest-results
+          path: pytest-results.txt
+          if-no-files-found: error
+
+      - name: Fail when pytest fails
+        if: steps.pytest.outcome == 'failure'
+        run: |
+          cat pytest-results.txt
+          exit 1
 
       - name: Clean up containers
         if: always()
