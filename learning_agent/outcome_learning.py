@@ -30,7 +30,11 @@ def _clamp(value: float, low: float, high: float) -> float:
     return max(low, min(high, float(value)))
 
 
-def _wilson_interval(wins: int, sample_count: int, z: float = 1.96) -> Tuple[float, float]:
+def _wilson_interval(
+    wins: int,
+    sample_count: int,
+    z: float = 1.96,
+) -> Tuple[float, float]:
     if sample_count <= 0:
         return 0.0, 0.0
     proportion = wins / sample_count
@@ -49,8 +53,12 @@ def _wilson_interval(wins: int, sample_count: int, z: float = 1.96) -> Tuple[flo
 def _metric(rows: Iterable[LearningOutcomeRecord]) -> Dict[str, Any]:
     records = list(rows)
     sample_count = len(records)
-    wins = sum(1 for record in records if float(record.return_pct) > 0.0)
-    losses = sum(1 for record in records if float(record.return_pct) < 0.0)
+    wins = sum(
+        1 for record in records if float(record.return_pct) > 0.0
+    )
+    losses = sum(
+        1 for record in records if float(record.return_pct) < 0.0
+    )
     breakeven = sample_count - wins - losses
     win_rate = wins / sample_count if sample_count else 0.0
     net_pnl = sum(float(record.realized_pnl) for record in records)
@@ -126,7 +134,10 @@ def _source_metric(
     supported_win_rate = (
         supported_wins / supported_count if supported_count else 0.0
     )
-    ci_low, ci_high = _wilson_interval(supported_wins, supported_count)
+    ci_low, ci_high = _wilson_interval(
+        supported_wins,
+        supported_count,
+    )
     avg_confidence = (
         sum(float(contribution.confidence) for _, contribution in pairs)
         / sample_count
@@ -152,7 +163,9 @@ def _source_metric(
 def _validate_record(record: LearningOutcomeRecord) -> List[str]:
     issues: List[str] = []
     if record.outcome_version != LEARNING_OUTCOME_VERSION:
-        issues.append(f"unsupported_outcome_version:{record.outcome_version}")
+        issues.append(
+            f"unsupported_outcome_version:{record.outcome_version}"
+        )
     if record.outcome_status != "closed":
         issues.append("outcome_not_closed")
     if record.pnl_status != "realized":
@@ -165,7 +178,9 @@ def _validate_record(record: LearningOutcomeRecord) -> List[str]:
         "completed",
         "exited",
     }:
-        issues.append(f"execution_not_complete:{record.execution_status}")
+        issues.append(
+            f"execution_not_complete:{record.execution_status}"
+        )
 
     bucket_values = {
         "strategy": record.strategy_bucket,
@@ -177,11 +192,15 @@ def _validate_record(record: LearningOutcomeRecord) -> List[str]:
         issues.append(
             "strategy_bucket_mismatch:"
             + ",".join(
-                f"{name}={value}" for name, value in bucket_values.items()
+                f"{name}={value}"
+                for name, value in bucket_values.items()
             )
         )
 
-    if record.manager_classifier_version != SUPPORTED_MANAGER_CLASSIFIER_VERSION:
+    if (
+        record.manager_classifier_version
+        != SUPPORTED_MANAGER_CLASSIFIER_VERSION
+    ):
         issues.append(
             "unsupported_manager_classifier_version:"
             f"{record.manager_classifier_version}"
@@ -202,7 +221,9 @@ def _validate_record(record: LearningOutcomeRecord) -> List[str]:
             continue
         expected_version = record.evidence_versions.get(source)
         if contribution.version != expected_version:
-            issues.append(f"{source}_contribution_version_mismatch")
+            issues.append(
+                f"{source}_contribution_version_mismatch"
+            )
         if contribution.evidence_status in {
             "insufficient",
             "invalid",
@@ -225,8 +246,12 @@ def _recommend_source_weights(
         if sample_count < minimum_samples:
             continue
         win_rate = float(metric.get("supported_win_rate") or 0.0)
-        ci_low = float(metric.get("supported_win_rate_ci_low") or 0.0)
-        ci_high = float(metric.get("supported_win_rate_ci_high") or 0.0)
+        ci_low = float(
+            metric.get("supported_win_rate_ci_low") or 0.0
+        )
+        ci_high = float(
+            metric.get("supported_win_rate_ci_high") or 0.0
+        )
         if win_rate >= 0.60 and ci_low >= 0.50:
             recommendations[source] = SOURCE_WEIGHT_STEP
         elif win_rate <= 0.40 and ci_high <= 0.50:
@@ -248,9 +273,21 @@ def _recommend_bucket_thresholds(
         ci_low = float(metric.get("win_rate_ci_low") or 0.0)
         if win_rate <= 0.40 or expectancy < 0.0:
             recommendations[bucket] = BUCKET_THRESHOLD_INCREASE
-        elif win_rate >= 0.60 and expectancy > 0.0 and ci_low >= 0.50:
+        elif (
+            win_rate >= 0.60
+            and expectancy > 0.0
+            and ci_low >= 0.50
+        ):
             recommendations[bucket] = BUCKET_THRESHOLD_DECREASE
     return recommendations
+
+
+def _empty_policy_recommendations() -> Dict[str, Dict[str, float]]:
+    return {
+        "agent_weight_deltas": {},
+        "bucket_threshold_deltas": {},
+        "risk_deltas": {},
+    }
 
 
 def analyze_learning_outcomes(
@@ -296,10 +333,12 @@ def analyze_learning_outcomes(
             source_rows[source].append((record, contribution))
 
     bucket_metrics = {
-        bucket: _metric(records) for bucket, records in by_bucket.items()
+        bucket: _metric(records)
+        for bucket, records in by_bucket.items()
     }
     source_metrics = {
-        source: _source_metric(rows) for source, rows in source_rows.items()
+        source: _source_metric(rows)
+        for source, rows in source_rows.items()
     }
     overall_metric = _metric(accepted)
 
@@ -326,35 +365,51 @@ def analyze_learning_outcomes(
         "bucket_threshold_deltas": bucket_threshold_deltas,
         "risk_deltas": risk_deltas,
     }
+    if len(accepted) < request.min_total_samples:
+        policy_recommendations = _empty_policy_recommendations()
+
     has_recommendation = any(
         bool(values) for values in policy_recommendations.values()
     )
 
     reasoning = [
         f"Accepted {len(accepted)} closed realized outcome(s).",
-        f"Rejected {len(rejected)} outcome(s) that failed learning guardrails.",
+        (
+            f"Rejected {len(rejected)} outcome(s) that failed "
+            "learning guardrails."
+        ),
     ]
     if not accepted:
         learning_state = "no_valid_outcomes"
         confidence = 0.0
-        reasoning.append("No outcome was eligible for attribution learning.")
+        reasoning.append(
+            "No outcome was eligible for attribution learning."
+        )
     elif len(accepted) < request.min_total_samples:
         learning_state = "warmup"
         confidence = 0.25
         reasoning.append(
             "Accepted outcome count is below the total sample threshold; "
-            "no broad policy change should be applied."
+            "all policy recommendations were suppressed."
         )
     else:
-        learning_state = "review_ready" if has_recommendation else "stable"
-        confidence = _clamp(0.50 + (len(accepted) / 100.0), 0.0, 0.85)
+        learning_state = (
+            "review_ready" if has_recommendation else "stable"
+        )
+        confidence = _clamp(
+            0.50 + (len(accepted) / 100.0),
+            0.0,
+            0.85,
+        )
         if has_recommendation:
             reasoning.append(
-                "Statistically guarded policy recommendations are ready for human review."
+                "Statistically guarded policy recommendations are ready "
+                "for human review."
             )
         else:
             reasoning.append(
-                "No source or bucket met the guarded policy-change thresholds."
+                "No source or bucket met the guarded policy-change "
+                "thresholds."
             )
 
     return LearningOutcomeResponse(
@@ -365,7 +420,9 @@ def analyze_learning_outcomes(
         reviewed_outcomes=len(request.outcomes),
         accepted_outcomes=len(accepted),
         rejected_outcomes=len(rejected),
-        duplicate_outcome_ids=list(dict.fromkeys(duplicate_outcome_ids)),
+        duplicate_outcome_ids=list(
+            dict.fromkeys(duplicate_outcome_ids)
+        ),
         rejected_records=rejected,
         overall_metrics=overall_metric,
         bucket_metrics=bucket_metrics,
@@ -391,7 +448,9 @@ def analyze_learning_outcomes(
             "supported_manager_classifier_version": (
                 SUPPORTED_MANAGER_CLASSIFIER_VERSION
             ),
-            "supported_evidence_versions": SUPPORTED_EVIDENCE_VERSIONS,
+            "supported_evidence_versions": (
+                SUPPORTED_EVIDENCE_VERSIONS
+            ),
         },
         reasoning=reasoning,
     )
