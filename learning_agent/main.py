@@ -4,6 +4,7 @@ import logging
 
 from fastapi import FastAPI, Request
 
+from .champion_challenger_routes import router as champion_challenger_router
 from .database import check_db_connection, init_db, load_bias_state, save_bias_state
 from .logic import run_learning_cycle
 from .market_regime import classify_market_regime
@@ -42,6 +43,7 @@ app = FastAPI(
     version=LEARNING_SERVICE_VERSION,
 )
 app.include_router(system_contract_router)
+app.include_router(champion_challenger_router)
 
 
 @app.on_event("startup")
