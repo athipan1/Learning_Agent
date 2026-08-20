@@ -4,6 +4,7 @@ import logging
 
 from fastapi import FastAPI, Request
 
+from .champion_challenger_routes import router as champion_challenger_router
 from .database import check_db_connection, init_db, load_bias_state, save_bias_state
 from .logic import run_learning_cycle
 from .market_regime import classify_market_regime
@@ -29,6 +30,7 @@ from .models import (
 from .outcome_learning import analyze_learning_outcomes
 from .performance_learning import analyze_performance_summary
 from .portfolio_learning import analyze_portfolio_audits
+from .shadow_review_routes import router as shadow_review_router
 from .system_contract import router as system_contract_router
 
 BIAS_STATE: Dict[str, Dict[str, float]] = {}
@@ -42,6 +44,8 @@ app = FastAPI(
     version=LEARNING_SERVICE_VERSION,
 )
 app.include_router(system_contract_router)
+app.include_router(champion_challenger_router)
+app.include_router(shadow_review_router)
 
 
 @app.on_event("startup")
